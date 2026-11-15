@@ -86,9 +86,74 @@
 
 ## 5. 今後の実装ロードマップ
 
-1. **Phase 1（インフラ基盤構築）**: 6サービス（Homebox, Wardrowbe, Grocy, Vikunja, Memos, Wallos）を単一の `docker-compose.yml` に定義し、ローカル環境で一括起動・APIキー発行を行います。
+1. **Phase 1（インフラ基盤構築）**: 6サービス（Homebox, Wardrowbe, Grocy, Vikunja, Memos, Wallos）を単一の `compose.yaml` に定義し、ローカル環境で一括起動・APIキー発行を行います。
 2. **Phase 2（Go MCPゲートウェイ開発）**: 本リポジトリの `life-mcp` を `modelcontextprotocol/go-sdk` で拡張し、各サービスのREST APIクライアントとGoogle Calendar連携を実装します。
 3. **Phase 3（複合ワークフローと自動化）**: `errgroup` を用いた並列集約ツール（朝のブリーフィング・レシート振り分け）を実装し、ローカルLLMおよび定期通知パイプラインと接続します。
+
+## 6. ローカル環境の起動（Docker Compose）
+
+6つのセルフホストサービス（Homebox・Wardrowbe・Grocy・Vikunja・Memos・Wallos）と、Wardrowbe 用の Redis を `compose.yaml` で一括起動します。Google Calendar は外部 API のため含みません。
+
+### 前提
+
+- Docker Engine 25 以上と Docker Compose v2（Wallos のヘルスチェックが `--start-interval` を使うため）
+- Docker に割り当てるメモリは 4GB 以上（6GB 以上を推奨。Node・Go のビルドが重いため）
+- サブモジュールの取得: `git submodule update --init --recursive`
+
+### 起動手順
+
+```sh
+cp .env.example .env
+# .env の空欄に秘密情報を入れる（hex の生成例: openssl rand -hex 24）
+docker compose build          # 初回のみ。メモリが足りない場合は `docker compose build <サービス名>` を1つずつ実行する
+docker compose up -d --wait
+```
+
+`.env` は Git に含まれません。パスワードは DSN に埋め込まれるため英数字（hex）にしてください。
+
+### アクセス先
+
+すべて `127.0.0.1` にだけ公開します。ポートは `.env` で変更できます。
+
+| サービス | URL | 保存先 |
+| --- | --- | --- |
+| Homebox | http://localhost:3100 | 共有 Postgres（`homebox`） |
+| Wardrowbe | http://localhost:8080 | 共有 Postgres（`wardrowbe`） |
+| Vikunja | http://localhost:3456 | 共有 Postgres（`vikunja`） |
+| Memos | http://localhost:5230 | 共有 Postgres（`memos`） |
+| Grocy | http://localhost:8081 | SQLite（`grocy_data` ボリューム） |
+| Wallos | http://localhost:8282 | SQLite（`wallos_db` ボリューム） |
+
+Database は Postgres 1インスタンスにまとめ、サービスごとに論理DBとロールを分けています。Grocy と Wallos は SQLite 専用のため Postgres には載せられません。
+
+### 初期設定と認証情報
+
+| サービス | 初回ログイン |
+| --- | --- |
+| Homebox | 画面から最初のユーザーを登録する |
+| Vikunja | 画面から最初のユーザーを登録する |
+| Memos | 最初に作成したアカウントが管理者になる |
+| Wallos | 最初に登録したユーザーが管理者になる |
+| Grocy | 既定の `admin` / `admin` でログインし、**すぐにパスワードを変更する** |
+| Wardrowbe | `WARDROWBE_DEBUG=true` の間は開発用ログインを使う。外部に公開する場合は OIDC を設定して `false` にする |
+
+Wardrowbe の AI 連携は、既定ではホスト上の Ollama（`http://host.docker.internal:11434/v1`）を指します。接続先は `.env` の `WARDROWBE_AI_*` で変更できます。
+
+### 動作確認
+
+```sh
+docker compose ps                                        # すべて healthy / Up（wardrowbe-migrate は Exited (0) が正常）
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3100/api/v1/status   # Homebox: 200
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3456/api/v1/info     # Vikunja: 200
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:5230/healthz         # Memos: 200
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8081/login           # Grocy: 200
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8282/health.php      # Wallos: 200
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/api/v1/health   # Wardrowbe: 200
+```
+
+データの永続化は、各サービスでデータを作成してから `docker compose down`（`-v` を付けない）→ `docker compose up -d --wait` を実行し、データが残っていることで確認できます。`docker compose down -v` はボリュームを削除するため、データがすべて消えます。
+
+構成の詳細と困ったときの対処は [docs/local-stack.md](docs/local-stack.md) を参照してください。
 
 ## Development
 
