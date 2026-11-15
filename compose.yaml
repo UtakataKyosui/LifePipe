@@ -90,11 +90,45 @@ services:
     networks:
       - lifepipe
 
+  grocy:
+    build:
+      context: ./submodules/grocy
+      dockerfile: ../../docker/grocy/Dockerfile
+      additional_contexts:
+        config: ./docker/grocy
+    restart: unless-stopped
+    environment:
+      GROCY_MODE: production
+    volumes:
+      - grocy_data:/var/www/html/data
+    ports:
+      - "127.0.0.1:${GROCY_PORT:-8081}:80"
+    networks:
+      - lifepipe
+
+  wallos:
+    build:
+      context: ./submodules/Wallos
+      dockerfile: ../../docker/wallos/Dockerfile
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Tokyo}
+    volumes:
+      - wallos_db:/var/www/html/db
+      - wallos_logos:/var/www/html/images/uploads/logos
+    ports:
+      - "127.0.0.1:${WALLOS_PORT:-8282}:80"
+    networks:
+      - lifepipe
+
 volumes:
   postgres_data:
   homebox_data:
   memos_data:
   vikunja_files:
+  grocy_data:
+  wallos_db:
+  wallos_logos:
 
 networks:
   lifepipe:
