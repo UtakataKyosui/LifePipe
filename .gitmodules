@@ -1,0 +1,18 @@
+[submodule "submodules/homebox"]
+	path = submodules/homebox
+	url = https://github.com/sysadminsmedia/homebox
+[submodule "submodules/wardrowbe"]
+	path = submodules/wardrowbe
+	url = https://github.com/Anyesh/wardrowbe
+[submodule "submodules/grocy"]
+	path = submodules/grocy
+	url = https://github.com/grocy/grocy
+[submodule "submodules/vikunja"]
+	path = submodules/vikunja
+	url = https://github.com/go-vikunja/vikunja
+[submodule "submodules/memos"]
+	path = submodules/memos
+	url = https://github.com/usememos/memos
+[submodule "submodules/Wallos"]
+	path = submodules/Wallos
+	url = https://github.com/ellite/Wallos
