@@ -1,0 +1,63 @@
+name: Go
+
+on:
+  push:
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/go.yml"
+      - "!.agents/skills/**"
+  pull_request:
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/go.yml"
+      - "!.agents/skills/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.x"
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Check formatting
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --name-only -z --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" -- '*.go' \
+              > "$RUNNER_TEMP/all-go-files"
+          else
+            git ls-files -z '*.go' > "$RUNNER_TEMP/all-go-files"
+          fi
+
+          grep -zv '^\.agents/skills/' "$RUNNER_TEMP/all-go-files" > "$RUNNER_TEMP/go-files" || true
+
+          if [[ -s "$RUNNER_TEMP/go-files" ]]; then
+            xargs -0 -r gofmt -l < "$RUNNER_TEMP/go-files" > "$RUNNER_TEMP/unformatted-go"
+          else
+            : > "$RUNNER_TEMP/unformatted-go"
+          fi
+
+          if [[ -s "$RUNNER_TEMP/unformatted-go" ]]; then
+            cat "$RUNNER_TEMP/unformatted-go"
+            exit 1
+          fi
+      - name: Test
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...

@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "skills": {
+    "go-best-practices": {
+      "source": "Facta-Dev/beautifulgo",
+      "sourceType": "github",
+      "skillPath": "skills/go-best-practices/SKILL.md",
+      "computedHash": "650fbd216667ea6c2f22a7a7ea984139c8dd0dd126ed10a3d8ad311cdf2b0470"
+    },
+    "go-port": {
+      "source": "Facta-Dev/beautifulgo",
+      "sourceType": "github",
+      "skillPath": "skills/go-port/SKILL.md",
+      "computedHash": "721102c9c28fb72f9581ce8233138021c32504e9eac1578dba9e127f6d8e5560"
+    },
+    "go-review": {
+      "source": "Facta-Dev/beautifulgo",
+      "sourceType": "github",
+      "skillPath": "skills/go-review/SKILL.md",
+      "computedHash": "1469068bb1347e91d1717a5f6a1bb7821730aeed978b25ae4d27a9b2923c0c34"
+    }
+  }
+}
