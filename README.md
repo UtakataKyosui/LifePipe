@@ -110,3 +110,25 @@ go vet ./...
 
 Repository-specific Go agent guidance is in
 `.agents/skills/lifepipe-go/SKILL.md`.
+
+### Go Agent Skills
+
+This repository includes the three upstream [Facta-Dev/beautifulgo](https://github.com/Facta-Dev/beautifulgo) Agent Skills for GitHub Copilot:
+
+- `go-best-practices` — Go implementation guidance
+- `go-review` — Go code review guidance
+- `go-port` — guidance for porting code to Go
+
+They are installed in `.agents/skills/` and tracked by `skills-lock.json`. To install
+or refresh them with the upstream skills installer:
+
+```sh
+npx skills add Facta-Dev/beautifulgo -a github-copilot
+npx skills update
+```
+
+The upstream skills and this project’s `lifepipe-go` skill serve different purposes:
+BeautifulGo provides general Go guidance, while `lifepipe-go` records LifePipe-specific
+architecture and security requirements. BeautifulGo also describes a particular backend
+stack; apply those stack-specific rules only if LifePipe adopts that architecture.
+BeautifulGo is MIT-licensed; see [`LICENSES/Facta-Dev-beautifulgo-MIT.txt`](LICENSES/Facta-Dev-beautifulgo-MIT.txt).
