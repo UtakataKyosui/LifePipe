@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-PATCH_FILE = re.compile(r"^\*\*\* (?:Update|Add|Move to): (.+)$", re.MULTILINE)
+PATCH_FILE = re.compile(r"^\*\*\* (?:Update File|Add File|Move to): (.+)$", re.MULTILINE)
 
 
 def main() -> int:
