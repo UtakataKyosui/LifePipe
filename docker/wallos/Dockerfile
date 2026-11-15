@@ -1,9 +1,9 @@
-FROM php:8.3-fpm-alpine AS extensions
+FROM php:8.3-fpm-alpine@sha256:f9804e0c991b5b339d6fa4fab9edf3c9c9ae68048fb1017cb6dea6265ccef054 AS extensions
 RUN apk add --no-cache $PHPIZE_DEPS libpng-dev libjpeg-turbo-dev freetype-dev libwebp-dev icu-dev libzip-dev && \
     docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp && \
     docker-php-ext-install -j2 gd intl zip calendar
 
-FROM php:8.3-fpm-alpine
+FROM php:8.3-fpm-alpine@sha256:f9804e0c991b5b339d6fa4fab9edf3c9c9ae68048fb1017cb6dea6265ccef054
 RUN apk upgrade --no-cache && \
     apk add --no-cache dumb-init shadow curl nginx dcron tzdata \
         libpng libjpeg-turbo freetype libwebp libzip icu-libs icu-data-full

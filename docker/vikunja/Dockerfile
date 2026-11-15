@@ -1,4 +1,4 @@
-FROM node:24-alpine AS frontend
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS frontend
 WORKDIR /build
 ENV PUPPETEER_SKIP_DOWNLOAD=true CYPRESS_INSTALL_BINARY=0
 RUN corepack enable
@@ -8,7 +8,7 @@ COPY frontend ./
 ARG VERSION=dev
 RUN echo "{\"VERSION\": \"${VERSION}\"}" > src/version.json && pnpm run build
 
-FROM golang:1.27-alpine AS backend
+FROM golang:1.27-alpine@sha256:eb61c3873c97416fff0116553fff65d67a3549f72e11d9758849a689cdd8b523 AS backend
 RUN apk add --no-cache build-base
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
       -ldflags "-s -w -linkmode external -extldflags '-static' -X code.vikunja.io/api/pkg/version.Version=${VERSION}" \
       -o /out/vikunja .
 
-FROM alpine:3
+FROM alpine:3@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 RUN apk add --no-cache ca-certificates tzdata && \
     mkdir -p /app/vikunja/files && chown -R 1000:1000 /app/vikunja
 COPY --from=backend /out/vikunja /app/vikunja/vikunja
