@@ -1,0 +1,7 @@
+package: edge
+generate:
+  models: true
+  std-http-server: true
+output: internal/edge/api.gen.go
+output-options:
+  skip-fmt: false
