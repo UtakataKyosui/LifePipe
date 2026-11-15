@@ -132,3 +132,15 @@ BeautifulGo provides general Go guidance, while `lifepipe-go` records LifePipe-s
 architecture and security requirements. BeautifulGo also describes a particular backend
 stack; apply those stack-specific rules only if LifePipe adopts that architecture.
 BeautifulGo is MIT-licensed; see [`LICENSES/Facta-Dev-beautifulgo-MIT.txt`](LICENSES/Facta-Dev-beautifulgo-MIT.txt).
+
+### AI coding agents
+
+Shared repository guidance is in [`AGENTS.md`](AGENTS.md). GitHub Copilot also uses
+[`.github/copilot-instructions.md`](.github/copilot-instructions.md), while Claude Code
+imports the shared guidance through [`CLAUDE.md`](CLAUDE.md). Project-level Codex
+configuration is in [`.codex/config.toml`](.codex/config.toml).
+
+Claude Code and Codex have optional project `PostToolUse` hooks that run `gofmt` on
+edited Go files. They do not run tests or access the network. See the
+[agent setup guide](docs/agent-setup.md) for hook behavior, trust requirements,
+troubleshooting, and opt-out instructions.
