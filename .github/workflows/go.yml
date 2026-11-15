@@ -7,12 +7,14 @@ on:
       - "go.mod"
       - "go.sum"
       - ".github/workflows/go.yml"
+      - "!.agents/skills/**"
   pull_request:
     paths:
       - "**/*.go"
       - "go.mod"
       - "go.sum"
       - ".github/workflows/go.yml"
+      - "!.agents/skills/**"
 
 permissions:
   contents: read
@@ -38,9 +40,17 @@ jobs:
         run: |
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             git diff --name-only -z --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" -- '*.go' \
-              | xargs -0 -r gofmt -l > "$RUNNER_TEMP/unformatted-go"
+              > "$RUNNER_TEMP/all-go-files"
           else
-            git ls-files -z '*.go' | xargs -0 -r gofmt -l > "$RUNNER_TEMP/unformatted-go"
+            git ls-files -z '*.go' > "$RUNNER_TEMP/all-go-files"
+          fi
+
+          grep -zv '^\.agents/skills/' "$RUNNER_TEMP/all-go-files" > "$RUNNER_TEMP/go-files" || true
+
+          if [[ -s "$RUNNER_TEMP/go-files" ]]; then
+            xargs -0 -r gofmt -l < "$RUNNER_TEMP/go-files" > "$RUNNER_TEMP/unformatted-go"
+          else
+            : > "$RUNNER_TEMP/unformatted-go"
           fi
 
           if [[ -s "$RUNNER_TEMP/unformatted-go" ]]; then
