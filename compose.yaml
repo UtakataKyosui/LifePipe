@@ -223,6 +223,7 @@ services:
       NEXTAUTH_URL: http://localhost:${WARDROWBE_PORT:-8080}
       NEXTAUTH_SECRET: ${WARDROWBE_NEXTAUTH_SECRET:?Set WARDROWBE_NEXTAUTH_SECRET in .env}
       BACKEND_URL: http://wardrowbe-backend:8000
+      DEV_MODE: ${WARDROWBE_DEBUG:-true}
     depends_on:
       - wardrowbe-backend
     networks:
