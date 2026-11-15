@@ -24,8 +24,77 @@ services:
     networks:
       - lifepipe
 
+  homebox:
+    build:
+      context: ./submodules/homebox
+      dockerfile: ../../docker/homebox/Dockerfile
+    restart: unless-stopped
+    environment:
+      HBOX_DATABASE_DRIVER: postgres
+      HBOX_DATABASE_HOST: postgres
+      HBOX_DATABASE_PORT: "5432"
+      HBOX_DATABASE_DATABASE: homebox
+      HBOX_DATABASE_USERNAME: homebox
+      HBOX_DATABASE_PASSWORD: ${HOMEBOX_DB_PASSWORD}
+      HBOX_DATABASE_SSL_MODE: disable
+      HBOX_AUTH_API_KEY_PEPPER: ${HOMEBOX_API_KEY_PEPPER:?Set HOMEBOX_API_KEY_PEPPER in .env}
+    volumes:
+      - homebox_data:/data
+    ports:
+      - "127.0.0.1:${HOMEBOX_PORT:-3100}:7745"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lifepipe
+
+  memos:
+    build:
+      context: ./submodules/memos
+      dockerfile: ../../docker/memos/Dockerfile
+    restart: unless-stopped
+    environment:
+      MEMOS_DRIVER: postgres
+      MEMOS_DSN: postgres://memos:${MEMOS_DB_PASSWORD}@postgres:5432/memos?sslmode=disable
+    volumes:
+      - memos_data:/var/opt/memos
+    ports:
+      - "127.0.0.1:${MEMOS_PORT:-5230}:5230"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lifepipe
+
+  vikunja:
+    build:
+      context: ./submodules/vikunja
+      dockerfile: ../../docker/vikunja/Dockerfile
+    restart: unless-stopped
+    environment:
+      VIKUNJA_DATABASE_TYPE: postgres
+      VIKUNJA_DATABASE_HOST: postgres
+      VIKUNJA_DATABASE_DATABASE: vikunja
+      VIKUNJA_DATABASE_USER: vikunja
+      VIKUNJA_DATABASE_PASSWORD: ${VIKUNJA_DB_PASSWORD}
+      VIKUNJA_DATABASE_SSLMODE: disable
+      VIKUNJA_SERVICE_JWTSECRET: ${VIKUNJA_JWT_SECRET:?Set VIKUNJA_JWT_SECRET in .env}
+      VIKUNJA_SERVICE_PUBLICURL: http://localhost:${VIKUNJA_PORT:-3456}/
+    volumes:
+      - vikunja_files:/app/vikunja/files
+    ports:
+      - "127.0.0.1:${VIKUNJA_PORT:-3456}:3456"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lifepipe
+
 volumes:
   postgres_data:
+  homebox_data:
+  memos_data:
+  vikunja_files:
 
 networks:
   lifepipe:
