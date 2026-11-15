@@ -1,0 +1,32 @@
+name: lifepipe
+
+# Homebox・Memos・Vikunja・Wardrowbe は共有 Postgres の論理DBを使う。
+# Grocy・Wallos は SQLite 専用のため、それぞれの名前付きボリュームに保存する。
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      HOMEBOX_DB_PASSWORD: ${HOMEBOX_DB_PASSWORD:?Set HOMEBOX_DB_PASSWORD in .env}
+      MEMOS_DB_PASSWORD: ${MEMOS_DB_PASSWORD:?Set MEMOS_DB_PASSWORD in .env}
+      VIKUNJA_DB_PASSWORD: ${VIKUNJA_DB_PASSWORD:?Set VIKUNJA_DB_PASSWORD in .env}
+      WARDROWBE_DB_PASSWORD: ${WARDROWBE_DB_PASSWORD:?Set WARDROWBE_DB_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lifepipe
+
+volumes:
+  postgres_data:
+
+networks:
+  lifepipe:
+    driver: bridge
