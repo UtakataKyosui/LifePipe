@@ -87,5 +87,26 @@
 ## 5. 今後の実装ロードマップ
 
 1. **Phase 1（インフラ基盤構築）**: 6サービス（Homebox, Wardrowbe, Grocy, Vikunja, Memos, Wallos）を単一の `docker-compose.yml` に定義し、ローカル環境で一括起動・APIキー発行を行います。
-2. **Phase 2（Go MCPゲートウェイ開発）**: `modelcontextprotocol/go-sdk` をベースに `life-mcp` リポジトリを作成し、各サービスのREST APIクライアントとGoogle Calendar連携を実装します。
+2. **Phase 2（Go MCPゲートウェイ開発）**: 本リポジトリの `life-mcp` を `modelcontextprotocol/go-sdk` で拡張し、各サービスのREST APIクライアントとGoogle Calendar連携を実装します。
 3. **Phase 3（複合ワークフローと自動化）**: `errgroup` を用いた並列集約ツール（朝のブリーフィング・レシート振り分け）を実装し、ローカルLLMおよび定期通知パイプラインと接続します。
+
+## Development
+
+The Go MCP gateway scaffold uses Go 1.25 and the official
+[`modelcontextprotocol/go-sdk`](https://github.com/modelcontextprotocol/go-sdk).
+Start its stdio server with:
+
+```sh
+go run ./cmd/life-mcp
+```
+
+Run the same checks as CI before submitting changes:
+
+```sh
+gofmt -w ./cmd
+go test ./...
+go vet ./...
+```
+
+Repository-specific Go agent guidance is in
+`.agents/skills/lifepipe-go/SKILL.md`.
