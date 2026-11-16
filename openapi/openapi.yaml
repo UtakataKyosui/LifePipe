@@ -9874,6 +9874,7 @@ components:
         barcode_type:
           allOf:
           - "$ref": "#/components/schemas/InventoryBarcodeType"
+          type: string
           nullable: true
           description: type が barcode のときのバーコードの種類
         barcode_data:
@@ -9962,6 +9963,7 @@ components:
         sheet_layout:
           allOf:
           - "$ref": "#/components/schemas/InventoryLabelSheetLayout"
+          type: object
           nullable: true
         is_default:
           type: boolean
@@ -10011,6 +10013,7 @@ components:
         sheet_layout:
           allOf:
           - "$ref": "#/components/schemas/InventoryLabelSheetLayout"
+          type: object
           nullable: true
         is_default:
           type: boolean
@@ -10045,6 +10048,7 @@ components:
         sheet_layout:
           allOf:
           - "$ref": "#/components/schemas/InventoryLabelSheetLayout"
+          type: object
           nullable: true
         is_default:
           type: boolean
@@ -10954,6 +10958,7 @@ components:
         occasion:
           allOf:
           - "$ref": "#/components/schemas/WardrobeOccasion"
+          type: string
           nullable: true
         rating:
           type: integer
@@ -11031,6 +11036,7 @@ components:
         occasion:
           allOf:
           - "$ref": "#/components/schemas/WardrobeOccasion"
+          type: string
           nullable: true
         rating:
           type: integer
@@ -11147,6 +11153,7 @@ components:
         occasion:
           allOf:
           - "$ref": "#/components/schemas/WardrobeOccasion"
+          type: string
           nullable: true
         source:
           "$ref": "#/components/schemas/WardrobeOutfitSource"
@@ -11203,6 +11210,7 @@ components:
         occasion:
           allOf:
           - "$ref": "#/components/schemas/WardrobeOccasion"
+          type: string
           nullable: true
     WardrobeOutfitPage:
       type: object
@@ -12133,11 +12141,13 @@ components:
         unit_price:
           allOf:
           - "$ref": "#/components/schemas/PantryMoney"
+          type: string
           nullable: true
           description: 在庫単位あたりの購入価格
         currency:
           allOf:
           - "$ref": "#/components/schemas/PantryCurrency"
+          type: string
           nullable: true
           description: unit_price の通貨。unit_price があるとき必ず値を持つ
         note:
@@ -12215,6 +12225,7 @@ components:
         next_due_status:
           allOf:
           - "$ref": "#/components/schemas/PantryDueStatus"
+          type: string
           nullable: true
           description: next_due_date の期限の状態（PAN-BR-07）
         below_min_stock:
@@ -12462,10 +12473,12 @@ components:
         unit_price:
           allOf:
           - "$ref": "#/components/schemas/PantryMoney"
+          type: string
           nullable: true
         currency:
           allOf:
           - "$ref": "#/components/schemas/PantryCurrency"
+          type: string
           nullable: true
         source:
           "$ref": "#/components/schemas/PantryStockTransactionSource"
@@ -13035,6 +13048,7 @@ components:
         purchase:
           allOf:
           - "$ref": "#/components/schemas/PantryPurchaseResult"
+          type: object
           nullable: true
           description: 在庫へ登録したときの結果。登録しなければ null
     PantryAddOverdueProductsRequest:
@@ -13305,6 +13319,7 @@ components:
         interval_unit:
           allOf:
           - "$ref": "#/components/schemas/TasksRepeatIntervalUnit"
+          type: string
           nullable: true
     TasksReminder:
       type: object
@@ -13455,6 +13470,7 @@ components:
         repeat:
           allOf:
           - "$ref": "#/components/schemas/TasksRepeatRule"
+          type: object
           nullable: true
           description: 繰り返し設定。null なら単発タスク
         last_completed_at:
@@ -13530,6 +13546,7 @@ components:
         repeat:
           allOf:
           - "$ref": "#/components/schemas/TasksRepeatRule"
+          type: object
           nullable: true
         location_id:
           type: string
@@ -13582,6 +13599,7 @@ components:
         repeat:
           allOf:
           - "$ref": "#/components/schemas/TasksRepeatRule"
+          type: object
           nullable: true
           description: null で繰り返しを外し、単発タスクにする（TSK-BR-11）
         location_id:
@@ -13894,6 +13912,7 @@ components:
         category:
           allOf:
           - "$ref": "#/components/schemas/TasksLocationCategory"
+          type: string
           nullable: true
         note:
           type: string
@@ -13919,6 +13938,7 @@ components:
         category:
           allOf:
           - "$ref": "#/components/schemas/TasksLocationCategory"
+          type: string
           nullable: true
         note:
           type: string
@@ -13931,6 +13951,7 @@ components:
         category:
           allOf:
           - "$ref": "#/components/schemas/TasksLocationCategory"
+          type: string
           nullable: true
         note:
           type: string
