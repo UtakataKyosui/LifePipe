@@ -1,0 +1,2058 @@
+# subscriptions fragment
+# 根拠: docs/requirements/subscriptions.md（SUB-UC-01〜22、SUB-BR-01〜21）
+paths:
+  /subscriptions/subscriptions:
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsListSubscriptions
+      summary: サブスクリプションの一覧を取得する
+      description: |
+        状態・カテゴリ・更新方法で絞り込み、名前・次回支払日・金額で並べ替える（SUB-UC-02）。
+        `status` の既定は `active`。`all` で停止中も含める。
+        返す `next_payment_date` には、日次処理の前でも SUB-BR-07 の追いつき計算を適用し、
+        自動更新かつ有効なものについて当日より前の日付を返さない（SUB-UC-09、SUB-BR-07）。
+        他人のサブスクリプションは含まない（SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-02, SUB-UC-09, SUB-BR-07, SUB-BR-15]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          required: false
+          description: 状態で絞り込む。既定は `active`。
+          schema:
+            $ref: '#/components/schemas/SubscriptionsStatusFilter'
+        - name: category_id
+          in: query
+          required: false
+          description: カテゴリで絞り込む。
+          schema:
+            type: string
+            format: uuid
+        - name: renewal_type
+          in: query
+          required: false
+          description: 更新方法で絞り込む。
+          schema:
+            $ref: '#/components/schemas/SubscriptionsRenewalType'
+        - name: folder_id
+          in: query
+          required: false
+          description: フォルダで絞り込む（後回しの機能。SUB-UC-19）。
+          schema:
+            type: string
+            format: uuid
+        - name: sort
+          in: query
+          required: false
+          description: 並べ替えの項目。既定は `next_payment_date`。
+          schema:
+            $ref: '#/components/schemas/SubscriptionsSortField'
+        - name: order
+          in: query
+          required: false
+          description: 並べ替えの向き。既定は `asc`。
+          schema:
+            $ref: '#/components/schemas/SubscriptionsSortOrder'
+      responses:
+        '200':
+          description: サブスクリプションの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsSubscriptionPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [subscriptions]
+      operationId: subscriptionsCreateSubscription
+      summary: サブスクリプションを登録する
+      description: |
+        サブスクリプションを登録する（SUB-UC-01）。
+        - `start_date` を省略すると利用者のタイムゾーンでの当日を入れる。
+        - `next_payment_date` を省略すると SUB-BR-04 で計算する（基準日は当日、当日の支払日は「次回」に含める）。
+        - `next_payment_date` を明示した場合はその値を保存する。`start_date` より前なら 400。支払日の列から外れた日付は新しい起点（`anchor_date`）になる（SUB-BR-05）。
+        - `cycle_interval` は 1〜366。範囲外は 400（SUB-BR-01）。
+        - `amount` は 0 以上で、小数の桁数は通貨の補助単位の桁数以下。超えたら 400（SUB-BR-13）。
+        - `currency` は ISO 4217 の 3 文字の英大文字（SUB-BR-14）。
+        - `end_date` は `start_date` 以降（SUB-BR-10）。
+        - `category_id` などの参照先が他人のもの・存在しないものなら 400（SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-01, SUB-UC-15, SUB-BR-01, SUB-BR-02, SUB-BR-03, SUB-BR-04, SUB-BR-05, SUB-BR-10, SUB-BR-13, SUB-BR-14, SUB-BR-15, SUB-BR-19]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsSubscriptionCreate'
+      responses:
+        '201':
+          description: 作成したサブスクリプション
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsSubscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/subscriptions/{subscription_id}:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionsSubscriptionId'
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsGetSubscription
+      summary: サブスクリプションを 1 件取得する
+      description: |
+        サブスクリプションを 1 件取得する（SUB-UC-03）。他人のものは存在しない場合と同じく 404（SUB-BR-15）。
+        返す `next_payment_date` には SUB-BR-07 の追いつき計算を適用する（SUB-UC-09）。
+      x-lifepipe-requirements: [SUB-UC-03, SUB-UC-09, SUB-BR-07, SUB-BR-15]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: サブスクリプション
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsSubscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [subscriptions]
+      operationId: subscriptionsUpdateSubscription
+      summary: サブスクリプションを部分更新する（停止・再開を含む）
+      description: |
+        送った項目だけを更新する（SUB-UC-04）。
+        - 停止・再開は `status` の更新で行う（SUB-UC-06）。停止中は次回支払日を進めず、更新予定・合計額・通知の対象外。再開したときは SUB-BR-04 で当日以降の次回支払日を計算し直す（SUB-BR-09）。
+        - `cycle_unit`・`cycle_interval`・`start_date` を変えたとき、`next_payment_date` を送らなければ SUB-BR-04 で計算し直す。それ以外の項目の更新では次回支払日を変えない（SUB-BR-06）。
+        - `next_payment_date` を明示した場合の扱いは SUB-BR-05（`start_date` より前は 400）。
+        - `end_date` は `start_date` 以降（SUB-BR-10）。null を送ると終了日を消す。
+        - 金額・通貨の制約は SUB-BR-13、SUB-BR-14。参照先の所有者の制約は SUB-BR-15。
+      x-lifepipe-requirements: [SUB-UC-04, SUB-UC-06, SUB-UC-15, SUB-BR-01, SUB-BR-04, SUB-BR-05, SUB-BR-06, SUB-BR-09, SUB-BR-10, SUB-BR-13, SUB-BR-14, SUB-BR-15, SUB-BR-19]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsSubscriptionUpdate'
+      responses:
+        '200':
+          description: 更新後のサブスクリプション
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsSubscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [subscriptions]
+      operationId: subscriptionsDeleteSubscription
+      summary: サブスクリプションを削除する
+      description: サブスクリプションを削除する（SUB-UC-05）。関連する支払い記録（Payment）も削除する。他人のものは 404（SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-05, SUB-BR-15]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /subscriptions/subscriptions/next-payment-date/calculate:
+    post:
+      tags: [subscriptions]
+      operationId: subscriptionsCalculateNextPaymentDate
+      summary: 次回支払日を計算する（保存しない）
+      description: |
+        開始日とサイクルから次回支払日の候補を計算して返す。保存しない（SUB-UC-07）。
+        - 支払日の列は `start_date` を起点に SUB-BR-02 で作る。月・年サイクルで該当日がない月は末日にし、毎回起点から計算する（SUB-BR-03）。
+        - `D(k) >= reference_date` を満たす最小の `D(k)` を次回支払日とする。`reference_date` の既定は当日（SUB-BR-04）。
+        - `count` 件（既定 1、最大 12）の支払日を昇順で返す。先頭が次回支払日。
+        - `cycle_interval` が 1〜366 の範囲外なら 400（SUB-BR-01）。
+      x-lifepipe-requirements: [SUB-UC-07, SUB-BR-01, SUB-BR-02, SUB-BR-03, SUB-BR-04]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsNextPaymentDateCalculation'
+      responses:
+        '200':
+          description: 計算結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsNextPaymentDateResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/subscriptions/upcoming:
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsListUpcomingPayments
+      summary: 期間内の更新予定（支払日の一覧）を取得する
+      description: |
+        期間 `[from, to]`（両端を含む）にある支払日を、有効なサブスクリプションごとにすべて列挙する（SUB-UC-08、SUB-BR-11）。
+        朝のブリーフィング（`get_morning_briefing`）が使う。
+        - 列挙は `next_payment_date` から始め、SUB-BR-02 の列に沿って `to` まで進める。週ごとのものは期間内に複数回出る。`end_date` より後の支払日は出さない（SUB-BR-10）。
+        - 並びは支払日の昇順、同じ日は名前の昇順（SUB-BR-11）。
+        - `from` の既定は当日、`to` の既定は `from + 7 日`。`from <= to` かつ長さ 366 日以内。違反は 400（SUB-BR-12）。
+        - 自動更新かつ有効なものは、日次処理の前でも SUB-BR-07 の追いつき計算を適用し、過去の日付を返さない（SUB-UC-09）。
+        - 手動更新で支払日を過ぎたものは `overdue=true` で返す。`from` が当日以前なら期間外でも先頭に含める（SUB-BR-08、SUB-BR-12）。
+        - 停止中のものは含めない（SUB-BR-09）。
+        - 合計額は通貨ごとに分けて返す（SUB-BR-14）。
+        期間が最大 366 日に限られ、合計額を全件で出すため、この一覧はページングしない。
+      x-lifepipe-requirements: [SUB-UC-08, SUB-UC-09, SUB-BR-07, SUB-BR-08, SUB-BR-09, SUB-BR-10, SUB-BR-11, SUB-BR-12, SUB-BR-14, SUB-BR-15]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionsFrom'
+        - $ref: '#/components/parameters/SubscriptionsTo'
+        - name: category_id
+          in: query
+          required: false
+          description: カテゴリで絞り込む。
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 更新予定と通貨ごとの合計額
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsUpcomingPaymentList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/categories:
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsListCategories
+      summary: カテゴリの一覧を取得する
+      description: カテゴリを `sort_order` の昇順で返す（SUB-UC-10）。自分のカテゴリだけを返す（SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-10, SUB-BR-15]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: カテゴリの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsCategoryPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [subscriptions]
+      operationId: subscriptionsCreateCategory
+      summary: カテゴリを登録する
+      description: |
+        カテゴリを登録する（SUB-UC-10）。名前は所有者の中で重複できない（大文字小文字を区別しない）。重複は 409（SUB-BR-16）。
+        `sort_order` を省略すると末尾に置く。
+      x-lifepipe-requirements: [SUB-UC-10, SUB-BR-16]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsCategoryCreate'
+      responses:
+        '201':
+          description: 作成したカテゴリ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsCategory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /subscriptions/categories/order:
+    put:
+      tags: [subscriptions]
+      operationId: subscriptionsReorderCategories
+      summary: カテゴリを並べ替える
+      description: |
+        カテゴリ ID の配列を受け取り、その順に `sort_order` を振り直す（SUB-UC-10）。
+        配列には自分のカテゴリをすべて 1 回ずつ含める。不足・重複・他人のカテゴリや存在しない ID があれば 400 で、何も変えない（SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-10, SUB-BR-15]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsCategoryOrder'
+      responses:
+        '204':
+          description: 並べ替えた
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/categories/{category_id}:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionsCategoryId'
+    patch:
+      tags: [subscriptions]
+      operationId: subscriptionsUpdateCategory
+      summary: カテゴリを部分更新する
+      description: カテゴリの名前・表示順を更新する（SUB-UC-10）。名前の重複は 409（SUB-BR-16）。他人のものは 404（SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-10, SUB-BR-15, SUB-BR-16]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsCategoryUpdate'
+      responses:
+        '200':
+          description: 更新後のカテゴリ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsCategory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [subscriptions]
+      operationId: subscriptionsDeleteCategory
+      summary: カテゴリを削除する
+      description: カテゴリを削除する（SUB-UC-10）。使用中なら、そのカテゴリを指していたサブスクリプションを未分類（`category_id` なし）にしてから削除する（SUB-BR-16）。他人のものは 404（SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-10, SUB-BR-15, SUB-BR-16]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /subscriptions/subscriptions/{subscription_id}/payments:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionsSubscriptionId'
+    post:
+      tags: [subscriptions]
+      operationId: subscriptionsMarkSubscriptionPaid
+      summary: 現在の支払日を支払い済みにする
+      description: |
+        現在の `next_payment_date` を `due_date` とする支払い記録を作り、`last_paid_on` を更新し、
+        次回支払日を `D(k) > due_date` を満たす最小の `D(k)` へ進める（SUB-UC-11、SUB-BR-17）。
+        手動更新のサブスクリプションはこの操作で次回支払日が進む（SUB-BR-08）。
+        - `amount`・`currency` の既定はその時点のサブスクリプションの値。制約は SUB-BR-13、SUB-BR-14。
+        - 同じ `due_date` の支払い記録は 1 件だけ。既にあれば 409（SUB-BR-17）。
+        - 停止中のサブスクリプションには使えない。409（SUB-BR-09）。
+      x-lifepipe-requirements: [SUB-UC-11, SUB-BR-08, SUB-BR-09, SUB-BR-13, SUB-BR-14, SUB-BR-15, SUB-BR-17]
+      x-lifepipe-priority: later
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsPaymentCreate'
+      responses:
+        '201':
+          description: 作成した支払い記録
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsPayment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /subscriptions/subscriptions/{subscription_id}/payments/latest:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionsSubscriptionId'
+    delete:
+      tags: [subscriptions]
+      operationId: subscriptionsUnmarkSubscriptionPaid
+      summary: 最後の支払い済みを取り消す
+      description: |
+        最後の支払い記録を削除し、次回支払日をその `due_date` に戻す（SUB-UC-11、SUB-BR-17）。
+        支払い記録がなければ 404。
+      x-lifepipe-requirements: [SUB-UC-11, SUB-BR-15, SUB-BR-17]
+      x-lifepipe-priority: later
+      responses:
+        '204':
+          description: 取り消した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /subscriptions/subscriptions/summary:
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsGetSubscriptionSummary
+      summary: 月額・年額の合計と予算との比較を取得する
+      description: |
+        有効なサブスクリプションの月額・年額の合計を返す（SUB-UC-12）。停止中は含めない（SUB-BR-09）。
+        - 月額換算は SUB-BR-18 の係数で行い、年額は月額 × 12。表示時に通貨の桁数で四捨五入する。
+        - 合計は通貨ごとに分けて返す。為替換算を設定した場合だけ基準通貨の合計と、使った為替レートを返す（SUB-BR-14、SUB-UC-13）。
+        - 月の予算を設定していれば予算との差を返す（SUB-UC-17）。
+        - `folder_id` を指定するとフォルダごとの合計になる（SUB-UC-19）。
+      x-lifepipe-requirements: [SUB-UC-12, SUB-UC-13, SUB-UC-17, SUB-UC-19, SUB-BR-09, SUB-BR-14, SUB-BR-18, SUB-BR-21]
+      x-lifepipe-priority: later
+      parameters:
+        - name: category_id
+          in: query
+          required: false
+          description: カテゴリで絞り込む。
+          schema:
+            type: string
+            format: uuid
+        - name: folder_id
+          in: query
+          required: false
+          description: フォルダで絞り込む（SUB-UC-19）。
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 合計額
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/subscriptions/statistics:
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsGetSubscriptionStatistics
+      summary: 統計（内訳・推移・節約額）を取得する
+      description: |
+        カテゴリ別・支払者別の月額の内訳、月額合計の推移、停止したサブスクリプションによる節約額を返す（SUB-UC-18）。
+        金額は SUB-BR-18 の月額換算で、通貨ごとに分ける（SUB-BR-14）。
+        節約額は停止したサブスクリプションの月額から、乗り換え先（`replaced_by_id`）の月額を引いたもの。
+        要件ドキュメントの API 表にない操作で、SUB-UC-18 を受けるために追加した。
+      x-lifepipe-requirements: [SUB-UC-18, SUB-BR-14, SUB-BR-18]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 統計
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsStatistics'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/subscriptions/upcoming.ics:
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsGetUpcomingCalendar
+      summary: 更新予定を iCalendar で取得する
+      description: |
+        更新予定を iCalendar（RFC 5545）で配信する（SUB-UC-20）。期間と列挙の規則は更新予定の取得と同じ（SUB-BR-11、SUB-BR-12）。
+      x-lifepipe-requirements: [SUB-UC-20, SUB-BR-11, SUB-BR-12]
+      x-lifepipe-priority: later
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionsFrom'
+        - $ref: '#/components/parameters/SubscriptionsTo'
+      responses:
+        '200':
+          description: iCalendar
+          content:
+            text/calendar:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/subscriptions/export:
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsExportSubscriptions
+      summary: サブスクリプションを CSV・JSON でエクスポートする
+      description: 自分のサブスクリプションを停止中も含めてすべて出力する（SUB-UC-21、SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-21, SUB-BR-15]
+      x-lifepipe-priority: later
+      parameters:
+        - name: format
+          in: query
+          required: true
+          description: 出力形式。
+          schema:
+            $ref: '#/components/schemas/SubscriptionsExportFormat'
+      responses:
+        '200':
+          description: エクスポートしたデータ
+          content:
+            text/csv:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SubscriptionsSubscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/subscriptions/batch:
+    post:
+      tags: [subscriptions]
+      operationId: subscriptionsBatchSubscriptions
+      summary: 複数のサブスクリプションをまとめて削除する・カテゴリを変える
+      description: |
+        指定したサブスクリプションをまとめて削除する、またはカテゴリを変える（SUB-UC-22）。
+        すべて成功するか、何も変えないかのどちらか。
+        - 他人のもの・存在しない ID が含まれれば 404（SUB-BR-15）。
+        - `set_category` で他人のカテゴリを指定したら 400。`category_id` に null を送ると未分類にする（SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-22, SUB-BR-15]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsBatchRequest'
+      responses:
+        '200':
+          description: 一括操作の結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsBatchResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /subscriptions/settings:
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsGetSettings
+      summary: 利用者設定を取得する
+      description: |
+        タイムゾーン・基準通貨・月の予算・通知の既定日数を返す（SUB-UC-13、SUB-UC-16、SUB-UC-17）。
+        未設定の項目はサービスの既定値を返す。
+      x-lifepipe-requirements: [SUB-UC-13, SUB-UC-16, SUB-UC-17]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 利用者設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsUserSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [subscriptions]
+      operationId: subscriptionsUpdateSettings
+      summary: 利用者設定を更新する
+      description: |
+        送った項目だけを更新する（SUB-UC-13、SUB-UC-16、SUB-UC-17）。
+        - `timezone` は IANA タイムゾーン名。「当日」の判定に使う。
+        - `main_currency` は ISO 4217 の 3 文字の英大文字（SUB-BR-14）。為替レートは 1 日 1 回まで取得する（SUB-BR-21）。
+        - `monthly_budget` は基準通貨の 0 以上の 10 進数。null または 0 は予算なし（SUB-BR-13）。
+        - `default_notify_days_before` は 0〜180（SUB-BR-19）。
+      x-lifepipe-requirements: [SUB-UC-13, SUB-UC-16, SUB-UC-17, SUB-BR-13, SUB-BR-14, SUB-BR-19, SUB-BR-21]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsUserSettingsUpdate'
+      responses:
+        '200':
+          description: 更新後の利用者設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsUserSettings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/payment-methods:
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsListPaymentMethods
+      summary: 支払い方法の一覧を取得する
+      description: 支払い方法を `sort_order` の昇順で返す（SUB-UC-14、SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-14, SUB-BR-15]
+      x-lifepipe-priority: later
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 支払い方法の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsPaymentMethodPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [subscriptions]
+      operationId: subscriptionsCreatePaymentMethod
+      summary: 支払い方法を登録する
+      description: 支払い方法を登録する（SUB-UC-14）。カード番号などの秘密情報は持たない。
+      x-lifepipe-requirements: [SUB-UC-14]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsPaymentMethodCreate'
+      responses:
+        '201':
+          description: 作成した支払い方法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsPaymentMethod'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/payment-methods/{payment_method_id}:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionsPaymentMethodId'
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsGetPaymentMethod
+      summary: 支払い方法を 1 件取得する
+      description: 支払い方法を 1 件取得する（SUB-UC-14）。他人のものは 404（SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-14, SUB-BR-15]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 支払い方法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsPaymentMethod'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [subscriptions]
+      operationId: subscriptionsUpdatePaymentMethod
+      summary: 支払い方法を部分更新する
+      description: 支払い方法を更新する（SUB-UC-14）。サブスクリプションが使用中のものを `enabled=false` にすると 409（SUB-BR-20）。
+      x-lifepipe-requirements: [SUB-UC-14, SUB-BR-15, SUB-BR-20]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsPaymentMethodUpdate'
+      responses:
+        '200':
+          description: 更新後の支払い方法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsPaymentMethod'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [subscriptions]
+      operationId: subscriptionsDeletePaymentMethod
+      summary: 支払い方法を削除する
+      description: 支払い方法を削除する（SUB-UC-14）。サブスクリプションが使用中なら 409（SUB-BR-20）。
+      x-lifepipe-requirements: [SUB-UC-14, SUB-BR-15, SUB-BR-20]
+      x-lifepipe-priority: later
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /subscriptions/household-members:
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsListHouseholdMembers
+      summary: 世帯メンバーの一覧を取得する
+      description: 世帯メンバーを名前の昇順で返す（SUB-UC-15、SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-15, SUB-BR-15]
+      x-lifepipe-priority: later
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 世帯メンバーの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsHouseholdMemberPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [subscriptions]
+      operationId: subscriptionsCreateHouseholdMember
+      summary: 世帯メンバーを登録する
+      description: 世帯メンバーを登録する（SUB-UC-15）。サブスクリプションの支払者には `payer_ids` で割り当てる（複数可）。
+      x-lifepipe-requirements: [SUB-UC-15]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsHouseholdMemberCreate'
+      responses:
+        '201':
+          description: 作成した世帯メンバー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsHouseholdMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/household-members/{household_member_id}:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionsHouseholdMemberId'
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsGetHouseholdMember
+      summary: 世帯メンバーを 1 件取得する
+      description: 世帯メンバーを 1 件取得する（SUB-UC-15）。他人のものは 404（SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-15, SUB-BR-15]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 世帯メンバー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsHouseholdMember'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [subscriptions]
+      operationId: subscriptionsUpdateHouseholdMember
+      summary: 世帯メンバーを部分更新する
+      description: 世帯メンバーを更新する（SUB-UC-15）。
+      x-lifepipe-requirements: [SUB-UC-15, SUB-BR-15]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsHouseholdMemberUpdate'
+      responses:
+        '200':
+          description: 更新後の世帯メンバー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsHouseholdMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [subscriptions]
+      operationId: subscriptionsDeleteHouseholdMember
+      summary: 世帯メンバーを削除する
+      description: 世帯メンバーを削除する（SUB-UC-15）。そのメンバーを支払者にしていたサブスクリプションの `payer_ids` から外す。
+      x-lifepipe-requirements: [SUB-UC-15, SUB-BR-15]
+      x-lifepipe-priority: later
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /subscriptions/folders:
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsListFolders
+      summary: フォルダの一覧を取得する
+      description: フォルダを名前の昇順で返す（SUB-UC-19、SUB-BR-15）。フォルダごとの合計は合計額の取得で `folder_id` を指定する。
+      x-lifepipe-requirements: [SUB-UC-19, SUB-BR-15]
+      x-lifepipe-priority: later
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: フォルダの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsFolderPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [subscriptions]
+      operationId: subscriptionsCreateFolder
+      summary: フォルダを登録する
+      description: フォルダを登録する（SUB-UC-19）。
+      x-lifepipe-requirements: [SUB-UC-19]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsFolderCreate'
+      responses:
+        '201':
+          description: 作成したフォルダ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsFolder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/folders/{folder_id}:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionsFolderId'
+    get:
+      tags: [subscriptions]
+      operationId: subscriptionsGetFolder
+      summary: フォルダを 1 件取得する
+      description: フォルダを 1 件取得する（SUB-UC-19）。他人のものは 404（SUB-BR-15）。
+      x-lifepipe-requirements: [SUB-UC-19, SUB-BR-15]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: フォルダ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsFolder'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [subscriptions]
+      operationId: subscriptionsUpdateFolder
+      summary: フォルダを部分更新する
+      description: フォルダを更新する（SUB-UC-19）。
+      x-lifepipe-requirements: [SUB-UC-19, SUB-BR-15]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionsFolderUpdate'
+      responses:
+        '200':
+          description: 更新後のフォルダ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionsFolder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [subscriptions]
+      operationId: subscriptionsDeleteFolder
+      summary: フォルダを削除する
+      description: フォルダを削除する（SUB-UC-19）。そのフォルダに入っていたサブスクリプションはフォルダなし（`folder_id` なし）になる。
+      x-lifepipe-requirements: [SUB-UC-19, SUB-BR-15]
+      x-lifepipe-priority: later
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    SubscriptionsSubscriptionId:
+      name: subscription_id
+      in: path
+      required: true
+      description: サブスクリプションの ID。
+      schema:
+        type: string
+        format: uuid
+    SubscriptionsCategoryId:
+      name: category_id
+      in: path
+      required: true
+      description: カテゴリの ID。
+      schema:
+        type: string
+        format: uuid
+    SubscriptionsPaymentMethodId:
+      name: payment_method_id
+      in: path
+      required: true
+      description: 支払い方法の ID。
+      schema:
+        type: string
+        format: uuid
+    SubscriptionsHouseholdMemberId:
+      name: household_member_id
+      in: path
+      required: true
+      description: 世帯メンバーの ID。
+      schema:
+        type: string
+        format: uuid
+    SubscriptionsFolderId:
+      name: folder_id
+      in: path
+      required: true
+      description: フォルダの ID。
+      schema:
+        type: string
+        format: uuid
+    SubscriptionsFrom:
+      name: from
+      in: query
+      required: false
+      description: 期間の開始日（含む）。既定は利用者のタイムゾーンでの当日（SUB-BR-12）。
+      schema:
+        type: string
+        format: date
+    SubscriptionsTo:
+      name: to
+      in: query
+      required: false
+      description: 期間の終了日（含む）。既定は `from + 7 日`。`from <= to` かつ長さ 366 日以内（SUB-BR-12）。
+      schema:
+        type: string
+        format: date
+
+  schemas:
+    # ---- enum ----
+    SubscriptionsCycleUnit:
+      type: string
+      description: 支払いサイクルの単位（SUB-BR-01）。
+      enum: [day, week, month, year]
+    SubscriptionsRenewalType:
+      type: string
+      description: 更新方法。`auto` は支払日を過ぎると自動で次の支払日へ進む。`manual` は支払い済みにするまで進まない（SUB-BR-07、SUB-BR-08）。
+      enum: [auto, manual]
+      default: auto
+    SubscriptionsStatus:
+      type: string
+      description: 有効・停止。停止中は更新予定・合計額・通知の対象外（SUB-BR-09）。
+      enum: [active, inactive]
+      default: active
+    SubscriptionsStatusFilter:
+      type: string
+      description: 一覧の状態フィルタ。`all` は有効・停止の両方。
+      enum: [active, inactive, all]
+      default: active
+    SubscriptionsSortField:
+      type: string
+      description: 一覧の並べ替え項目。
+      enum: [name, next_payment_date, amount]
+      default: next_payment_date
+    SubscriptionsSortOrder:
+      type: string
+      description: 並べ替えの向き。
+      enum: [asc, desc]
+      default: asc
+    SubscriptionsExportFormat:
+      type: string
+      description: エクスポートの形式。
+      enum: [csv, json]
+    SubscriptionsBatchAction:
+      type: string
+      description: 一括操作の種類。
+      enum: [delete, set_category]
+
+    # ---- Subscription ----
+    SubscriptionsSubscription:
+      type: object
+      description: サブスクリプション（定期的に支払いが発生する契約）。
+      required:
+        - id
+        - owner_id
+        - name
+        - amount
+        - currency
+        - cycle_unit
+        - cycle_interval
+        - start_date
+        - next_payment_date
+        - anchor_date
+        - renewal_type
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: サーバーが採番する ID。
+        owner_id:
+          type: string
+          readOnly: true
+          description: 所有者（OIDC の subject）。認証情報から決まる。
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: サービス名。
+          example: 架空動画プラス
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+          description: 1 回の支払額。0 以上の 10 進数。小数の桁数は通貨の補助単位の桁数以下（SUB-BR-13）。
+          example: '1480'
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          description: ISO 4217 の通貨コード（SUB-BR-14）。
+          example: JPY
+        cycle_unit:
+          $ref: '#/components/schemas/SubscriptionsCycleUnit'
+        cycle_interval:
+          type: integer
+          minimum: 1
+          maximum: 366
+          description: サイクルの間隔（SUB-BR-01）。
+          example: 1
+        start_date:
+          type: string
+          format: date
+          description: 契約の開始日。支払日の起点。
+        next_payment_date:
+          type: string
+          format: date
+          description: 次回支払日。
+        anchor_date:
+          type: string
+          format: date
+          readOnly: true
+          description: 支払日の列の起点（SUB-BR-02、SUB-BR-05）。既定は `start_date`。
+        renewal_type:
+          $ref: '#/components/schemas/SubscriptionsRenewalType'
+        status:
+          $ref: '#/components/schemas/SubscriptionsStatus'
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          description: 契約の終了日（解約予定日）。この日より後の支払日は発生しない（SUB-BR-10）。
+        category_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: カテゴリ。null は未分類。
+        url:
+          type: string
+          format: uri
+          pattern: '^https?://'
+          maxLength: 2048
+          nullable: true
+          description: 契約の管理ページなどの URL。http または https。
+          example: https://example.com/account
+        notes:
+          type: string
+          maxLength: 2000
+          nullable: true
+          description: メモ（Markdown 可）。
+        payment_method_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 支払い方法（後回しの機能）。
+        payer_ids:
+          type: array
+          description: 支払者の世帯メンバー ID（後回しの機能。SUB-UC-15）。
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: フォルダ（後回しの機能）。
+        replaced_by_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 停止したサブスクリプションの乗り換え先（後回しの機能）。節約額の計算に使う。
+        notify:
+          type: boolean
+          default: false
+          description: 支払い前に通知するか（後回しの機能。SUB-BR-19）。
+        notify_days_before:
+          type: integer
+          minimum: 0
+          maximum: 180
+          nullable: true
+          description: 何日前に通知するか。0 は支払日当日。null は利用者の既定値（SUB-BR-19）。
+        last_paid_on:
+          type: string
+          format: date
+          nullable: true
+          readOnly: true
+          description: 最後に支払い済みにした支払日（SUB-BR-17）。
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: 作成日時。
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: 更新日時。
+    SubscriptionsSubscriptionCreate:
+      type: object
+      description: サブスクリプションの登録内容。`start_date` と `next_payment_date` は省略するとサーバーが決める（SUB-BR-04、SUB-BR-05）。
+      required:
+        - name
+        - amount
+        - currency
+        - cycle_unit
+        - cycle_interval
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: 架空動画プラス
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+          description: 0 以上の 10 進数。小数の桁数は通貨の補助単位の桁数以下（SUB-BR-13）。
+          example: '1480'
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: JPY
+        cycle_unit:
+          $ref: '#/components/schemas/SubscriptionsCycleUnit'
+        cycle_interval:
+          type: integer
+          minimum: 1
+          maximum: 366
+          example: 1
+        start_date:
+          type: string
+          format: date
+          description: 省略時は利用者のタイムゾーンでの当日。
+        next_payment_date:
+          type: string
+          format: date
+          description: 省略時は SUB-BR-04 で計算する。`start_date` より前は 400（SUB-BR-05）。
+        renewal_type:
+          $ref: '#/components/schemas/SubscriptionsRenewalType'
+        status:
+          $ref: '#/components/schemas/SubscriptionsStatus'
+        end_date:
+          type: string
+          format: date
+          description: '`start_date` 以降（SUB-BR-10）。'
+        category_id:
+          type: string
+          format: uuid
+          description: 自分のカテゴリ。他人のもの・存在しないものは 400（SUB-BR-15）。
+        url:
+          type: string
+          format: uri
+          pattern: '^https?://'
+          maxLength: 2048
+        notes:
+          type: string
+          maxLength: 2000
+        payment_method_id:
+          type: string
+          format: uuid
+        payer_ids:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        folder_id:
+          type: string
+          format: uuid
+        replaced_by_id:
+          type: string
+          format: uuid
+        notify:
+          type: boolean
+          default: false
+        notify_days_before:
+          type: integer
+          minimum: 0
+          maximum: 180
+    SubscriptionsSubscriptionUpdate:
+      type: object
+      description: サブスクリプションの部分更新。送った項目だけを更新する。null を送れる項目は null で値を消す。
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        cycle_unit:
+          $ref: '#/components/schemas/SubscriptionsCycleUnit'
+        cycle_interval:
+          type: integer
+          minimum: 1
+          maximum: 366
+        start_date:
+          type: string
+          format: date
+        next_payment_date:
+          type: string
+          format: date
+          description: 送らずにサイクルか開始日を変えると SUB-BR-04 で計算し直す（SUB-BR-06）。
+        renewal_type:
+          $ref: '#/components/schemas/SubscriptionsRenewalType'
+        status:
+          $ref: '#/components/schemas/SubscriptionsStatus'
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        category_id:
+          type: string
+          format: uuid
+          nullable: true
+        url:
+          type: string
+          format: uri
+          pattern: '^https?://'
+          maxLength: 2048
+          nullable: true
+        notes:
+          type: string
+          maxLength: 2000
+          nullable: true
+        payment_method_id:
+          type: string
+          format: uuid
+          nullable: true
+        payer_ids:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+        replaced_by_id:
+          type: string
+          format: uuid
+          nullable: true
+        notify:
+          type: boolean
+        notify_days_before:
+          type: integer
+          minimum: 0
+          maximum: 180
+          nullable: true
+    SubscriptionsSubscriptionPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionsSubscription'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+
+    # ---- 次回支払日の計算 ----
+    SubscriptionsNextPaymentDateCalculation:
+      type: object
+      description: 次回支払日の計算の入力（SUB-UC-07）。
+      required: [start_date, cycle_unit, cycle_interval]
+      properties:
+        start_date:
+          type: string
+          format: date
+          description: 支払日の列の起点。
+        cycle_unit:
+          $ref: '#/components/schemas/SubscriptionsCycleUnit'
+        cycle_interval:
+          type: integer
+          minimum: 1
+          maximum: 366
+        reference_date:
+          type: string
+          format: date
+          description: 基準日。既定は利用者のタイムゾーンでの当日（SUB-BR-04）。
+        count:
+          type: integer
+          minimum: 1
+          maximum: 12
+          default: 1
+          description: 次回以降の支払日をいくつ返すか。
+    SubscriptionsNextPaymentDateResult:
+      type: object
+      required: [next_payment_date, payment_dates]
+      properties:
+        next_payment_date:
+          type: string
+          format: date
+          description: 次回支払日（`payment_dates` の先頭と同じ）。
+        payment_dates:
+          type: array
+          minItems: 1
+          maxItems: 12
+          description: 次回支払日から昇順に `count` 件。
+          items:
+            type: string
+            format: date
+
+    # ---- 更新予定 ----
+    SubscriptionsUpcomingPayment:
+      type: object
+      description: 更新予定の 1 件。計算結果で保存しない。
+      required: [subscription_id, name, due_date, amount, currency, renewal_type, overdue]
+      properties:
+        subscription_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: 架空動画プラス
+        due_date:
+          type: string
+          format: date
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+          example: '1480'
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: JPY
+        category_id:
+          type: string
+          format: uuid
+          nullable: true
+        renewal_type:
+          $ref: '#/components/schemas/SubscriptionsRenewalType'
+        overdue:
+          type: boolean
+          description: 支払日が当日より前で、まだ支払い済みにしていない（manual のみ true になりうる。SUB-BR-08）。
+    SubscriptionsCurrencyTotal:
+      type: object
+      description: 通貨ごとの合計額（SUB-BR-14）。
+      required: [currency, amount]
+      properties:
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+    SubscriptionsUpcomingPaymentList:
+      type: object
+      description: 更新予定と通貨ごとの合計額。ページングしない。
+      required: [from, to, items, totals]
+      properties:
+        from:
+          type: string
+          format: date
+          description: 適用した期間の開始日。
+        to:
+          type: string
+          format: date
+          description: 適用した期間の終了日。
+        items:
+          type: array
+          description: 支払日の昇順、同じ日は名前の昇順。`overdue=true` のものは先頭に置く（SUB-BR-11、SUB-BR-12）。
+          items:
+            $ref: '#/components/schemas/SubscriptionsUpcomingPayment'
+        totals:
+          type: array
+          description: '`items` の通貨ごとの合計額。'
+          items:
+            $ref: '#/components/schemas/SubscriptionsCurrencyTotal'
+
+    # ---- Category ----
+    SubscriptionsCategory:
+      type: object
+      required: [id, owner_id, name, sort_order, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        owner_id:
+          type: string
+          readOnly: true
+          description: 所有者（OIDC の subject）。
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: カテゴリ名。所有者の中で重複不可（大文字小文字を区別しない。SUB-BR-16）。
+          example: 動画配信
+        sort_order:
+          type: integer
+          minimum: 0
+          description: 表示順。小さい順に並べる。
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    SubscriptionsCategoryCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: 動画配信
+        sort_order:
+          type: integer
+          minimum: 0
+          description: 省略時は末尾。
+    SubscriptionsCategoryUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        sort_order:
+          type: integer
+          minimum: 0
+    SubscriptionsCategoryOrder:
+      type: object
+      required: [category_ids]
+      properties:
+        category_ids:
+          type: array
+          description: 新しい並び順のカテゴリ ID。自分のカテゴリをすべて 1 回ずつ含める。
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+    SubscriptionsCategoryPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionsCategory'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+
+    # ---- Payment ----
+    SubscriptionsPayment:
+      type: object
+      description: 支払い記録（SUB-BR-17）。
+      required: [id, subscription_id, due_date, amount, currency, paid_at, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        subscription_id:
+          type: string
+          format: uuid
+          readOnly: true
+        due_date:
+          type: string
+          format: date
+          readOnly: true
+          description: 支払い済みにした支払日（その時点の `next_payment_date`）。
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        paid_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: 支払い済みにした日時。
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+    SubscriptionsPaymentCreate:
+      type: object
+      description: 支払い済みにする操作の入力。省略した項目はその時点のサブスクリプションの値を使う。
+      properties:
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+          description: 実際の支払額。小数の桁数は通貨の補助単位の桁数以下（SUB-BR-13）。
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+
+    # ---- 合計額・統計 ----
+    SubscriptionsExchangeRate:
+      type: object
+      description: 為替レートの取得結果（後回しの機能。SUB-BR-21）。
+      required: [base_currency, quote_currency, rate, fetched_on]
+      properties:
+        base_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        quote_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        rate:
+          type: string
+          pattern: '^\d+(\.\d+)?$'
+          description: 基準通貨 1 単位あたりの換算先通貨の量。10 進数の文字列。
+        fetched_on:
+          type: string
+          format: date
+          description: 取得日。
+    SubscriptionsCostTotal:
+      type: object
+      description: ある通貨での月額・年額の合計（SUB-BR-18）。
+      required: [currency, monthly_amount, yearly_amount, subscription_count]
+      properties:
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        monthly_amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+        yearly_amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+        subscription_count:
+          type: integer
+          minimum: 0
+          description: 合計に含めたサブスクリプションの数。
+    SubscriptionsSummary:
+      type: object
+      description: 月額・年額の合計と予算との比較（SUB-UC-12、SUB-UC-17）。
+      required: [totals_by_currency]
+      properties:
+        totals_by_currency:
+          type: array
+          description: 通貨ごとの合計（SUB-BR-14）。
+          items:
+            $ref: '#/components/schemas/SubscriptionsCostTotal'
+        main_currency_total:
+          type: object
+          nullable: true
+          description: 基準通貨に換算した合計。為替換算を設定した場合だけ返す（SUB-BR-14）。
+          required: [currency, monthly_amount, yearly_amount, subscription_count]
+          properties:
+            currency:
+              type: string
+              pattern: '^[A-Z]{3}$'
+            monthly_amount:
+              type: string
+              pattern: '^\d+(\.\d{1,4})?$'
+            yearly_amount:
+              type: string
+              pattern: '^\d+(\.\d{1,4})?$'
+            subscription_count:
+              type: integer
+              minimum: 0
+        monthly_budget:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+          nullable: true
+          description: 月の予算（基準通貨）。予算なしは null。
+        budget_remaining:
+          type: string
+          pattern: '^-?\d+(\.\d{1,4})?$'
+          nullable: true
+          description: 予算 − 基準通貨の月額合計。負は予算超過。予算なし、または換算していなければ null。
+        exchange_rates:
+          type: array
+          description: 換算に使った為替レート。換算していなければ空。
+          items:
+            $ref: '#/components/schemas/SubscriptionsExchangeRate'
+    SubscriptionsStatistics:
+      type: object
+      description: 統計（SUB-UC-18）。金額は月額換算で通貨ごとに分ける。
+      required: [by_category, by_payer, monthly_total_trend, savings]
+      properties:
+        by_category:
+          type: array
+          description: カテゴリ別の月額。`category_id` が null は未分類。
+          items:
+            type: object
+            required: [currency, monthly_amount]
+            properties:
+              category_id:
+                type: string
+                format: uuid
+                nullable: true
+              currency:
+                type: string
+                pattern: '^[A-Z]{3}$'
+              monthly_amount:
+                type: string
+                pattern: '^\d+(\.\d{1,4})?$'
+        by_payer:
+          type: array
+          description: 支払者別の月額。`household_member_id` が null は支払者なし。
+          items:
+            type: object
+            required: [currency, monthly_amount]
+            properties:
+              household_member_id:
+                type: string
+                format: uuid
+                nullable: true
+              currency:
+                type: string
+                pattern: '^[A-Z]{3}$'
+              monthly_amount:
+                type: string
+                pattern: '^\d+(\.\d{1,4})?$'
+        monthly_total_trend:
+          type: array
+          description: 記録日ごとの月額合計の推移（古い順）。
+          items:
+            type: object
+            required: [recorded_on, currency, monthly_amount]
+            properties:
+              recorded_on:
+                type: string
+                format: date
+              currency:
+                type: string
+                pattern: '^[A-Z]{3}$'
+              monthly_amount:
+                type: string
+                pattern: '^\d+(\.\d{1,4})?$'
+        savings:
+          type: array
+          description: 停止したサブスクリプションごとの月額の節約額。乗り換え先があればその月額を引く。
+          items:
+            type: object
+            required: [subscription_id, currency, monthly_amount]
+            properties:
+              subscription_id:
+                type: string
+                format: uuid
+              replaced_by_id:
+                type: string
+                format: uuid
+                nullable: true
+              currency:
+                type: string
+                pattern: '^[A-Z]{3}$'
+              monthly_amount:
+                type: string
+                pattern: '^-?\d+(\.\d{1,4})?$'
+                description: 節約額。乗り換え先の方が高ければ負になる。
+
+    # ---- 一括操作 ----
+    SubscriptionsBatchRequest:
+      type: object
+      required: [action, subscription_ids]
+      properties:
+        action:
+          $ref: '#/components/schemas/SubscriptionsBatchAction'
+        subscription_ids:
+          type: array
+          minItems: 1
+          maxItems: 200
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        category_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: '`set_category` のときに指定する。null は未分類。`delete` では無視する。'
+    SubscriptionsBatchResult:
+      type: object
+      required: [affected]
+      properties:
+        affected:
+          type: integer
+          minimum: 0
+          description: 削除・更新したサブスクリプションの数。
+
+    # ---- UserSettings ----
+    SubscriptionsUserSettings:
+      type: object
+      description: 利用者設定（後回しの機能）。
+      required: [owner_id, timezone, main_currency, updated_at]
+      properties:
+        owner_id:
+          type: string
+          readOnly: true
+        timezone:
+          type: string
+          maxLength: 64
+          description: IANA タイムゾーン名。「当日」の判定に使う。
+          example: Asia/Tokyo
+        main_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          description: 合計額を表示する基準通貨。
+          example: JPY
+        monthly_budget:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+          nullable: true
+          description: 月の予算（基準通貨）。null または 0 は予算なし。
+        default_notify_days_before:
+          type: integer
+          minimum: 0
+          maximum: 180
+          nullable: true
+          description: 通知の既定日数（SUB-BR-19）。
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    SubscriptionsUserSettingsUpdate:
+      type: object
+      properties:
+        timezone:
+          type: string
+          maxLength: 64
+        main_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        monthly_budget:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+          nullable: true
+        default_notify_days_before:
+          type: integer
+          minimum: 0
+          maximum: 180
+          nullable: true
+
+    # ---- PaymentMethod ----
+    SubscriptionsPaymentMethod:
+      type: object
+      description: 支払い方法（後回しの機能）。カード番号などの秘密情報は持たない。
+      required: [id, owner_id, name, enabled, sort_order, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        owner_id:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: 架空カード
+        enabled:
+          type: boolean
+          description: 選択肢に出すか。
+        sort_order:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    SubscriptionsPaymentMethodCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: 口座振替
+        enabled:
+          type: boolean
+          default: true
+        sort_order:
+          type: integer
+          minimum: 0
+          description: 省略時は末尾。
+    SubscriptionsPaymentMethodUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        enabled:
+          type: boolean
+          description: 使用中のものを false にすると 409（SUB-BR-20）。
+        sort_order:
+          type: integer
+          minimum: 0
+    SubscriptionsPaymentMethodPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionsPaymentMethod'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+
+    # ---- HouseholdMember ----
+    SubscriptionsHouseholdMember:
+      type: object
+      description: 世帯メンバー（後回しの機能）。サブスクリプションの支払者に割り当てる。
+      required: [id, owner_id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        owner_id:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: 家族A
+        email:
+          type: string
+          format: email
+          nullable: true
+          description: 通知先のメールアドレス。
+          example: member@example.com
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    SubscriptionsHouseholdMemberCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        email:
+          type: string
+          format: email
+    SubscriptionsHouseholdMemberUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          nullable: true
+    SubscriptionsHouseholdMemberPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionsHouseholdMember'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+
+    # ---- Folder ----
+    SubscriptionsFolder:
+      type: object
+      description: フォルダ（後回しの機能）。
+      required: [id, owner_id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        owner_id:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: 仕事用
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          nullable: true
+          description: 表示色（#RRGGBB）。
+          example: '#3366CC'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    SubscriptionsFolderCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+    SubscriptionsFolderUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          nullable: true
+    SubscriptionsFolderPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionsFolder'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1

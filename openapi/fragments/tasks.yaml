@@ -1,0 +1,1728 @@
+# tasks fragment
+paths:
+  /tasks/projects:
+    get:
+      tags: [tasks]
+      operationId: tasksListProjects
+      summary: プロジェクトを一覧する
+      description: |
+        プロジェクトをページ分割して返す（TSK-BR-22）。archived と parent_project_id で絞り込める。
+      x-lifepipe-requirements: [TSK-UC-09, TSK-BR-22]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: archived
+          in: query
+          required: false
+          description: true ならアーカイブ済みだけ、false ならアーカイブされていないものだけを返す。省略時はすべて。
+          schema:
+            type: boolean
+        - name: parent_project_id
+          in: query
+          required: false
+          description: 指定した親プロジェクトの直下の子プロジェクトだけを返す。
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: プロジェクトの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksProjectPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [tasks]
+      operationId: tasksCreateProject
+      summary: プロジェクトを登録する
+      description: |
+        プロジェクトを登録する。identifier は全プロジェクトで一意で、重複は 409（TSK-BR-26）。
+        親プロジェクトを指定でき、存在しない親は 404 とする（TSK-BR-24）。
+        Inbox は利用者ごとに1つ自動で作られ、この操作では作らない（TSK-BR-01）。
+      x-lifepipe-requirements: [TSK-UC-09, TSK-BR-01, TSK-BR-24, TSK-BR-26]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksProjectCreate'
+      responses:
+        '201':
+          description: 登録したプロジェクト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksProject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /tasks/projects/{project_id}:
+    parameters:
+      - $ref: '#/components/parameters/TasksProjectId'
+    get:
+      tags: [tasks]
+      operationId: tasksGetProject
+      summary: プロジェクトを取得する
+      x-lifepipe-requirements: [TSK-UC-09]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: プロジェクト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksProject'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [tasks]
+      operationId: tasksUpdateProject
+      summary: プロジェクトを更新する
+      description: |
+        送った項目だけを更新する。自分自身や自分の子孫を親にする変更は 422 で拒否する（TSK-BR-24）。
+        identifier の重複は 409（TSK-BR-26）。アーカイブ中のプロジェクトは読み取り専用で、更新は 409（TSK-BR-25）。
+      x-lifepipe-requirements: [TSK-UC-09, TSK-BR-24, TSK-BR-25, TSK-BR-26]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksProjectUpdate'
+      responses:
+        '200':
+          description: 更新後のプロジェクト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksProject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      tags: [tasks]
+      operationId: tasksDeleteProject
+      summary: プロジェクトを削除する
+      description: |
+        プロジェクトを即時削除する。子プロジェクトと所属するタスクもあわせて削除する（TSK-BR-24。ゴミ箱は後回し）。
+        Inbox は削除できず 409 を返す（TSK-BR-01）。
+      x-lifepipe-requirements: [TSK-UC-09, TSK-BR-01, TSK-BR-24]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /tasks/projects/{project_id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/TasksProjectId'
+    post:
+      tags: [tasks]
+      operationId: tasksArchiveProject
+      summary: プロジェクトをアーカイブする
+      description: |
+        プロジェクトをアーカイブする。アーカイブ中のプロジェクトとそのタスクは読み取り専用になる（TSK-BR-25）。
+        すでにアーカイブ済みなら状態を変えずに現在の状態を返す。
+      x-lifepipe-requirements: [TSK-UC-14, TSK-BR-25]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: アーカイブ後のプロジェクト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksProject'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [tasks]
+      operationId: tasksUnarchiveProject
+      summary: プロジェクトのアーカイブを解除する
+      description: |
+        アーカイブを解除し、プロジェクトとそのタスクを再び更新できるようにする（TSK-BR-25）。
+        アーカイブされていなければ状態を変えずに現在の状態を返す。
+      x-lifepipe-requirements: [TSK-UC-14, TSK-BR-25]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 解除後のプロジェクト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksProject'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/tasks:
+    get:
+      tags: [tasks]
+      operationId: tasksListTasks
+      summary: タスクを一覧する
+      description: |
+        タスクを絞り込み・並べ替えてページ分割で返す（TSK-BR-22）。
+        done を省略すると未完了のタスクだけを返す。完了済みを得るには done=true を明示する（TSK-BR-21）。
+        ラベル・場所・優先度などで絞り込むとき、その値を持たないタスクは含めない（TSK-BR-20）。
+        期限の昇順で並べるとき、期限なしは最後にする（TSK-BR-21）。
+        日時の判定は利用者設定のタイムゾーンで行う（TSK-BR-08）。
+      x-lifepipe-requirements: [TSK-UC-05, TSK-BR-04, TSK-BR-08, TSK-BR-20, TSK-BR-21, TSK-BR-22]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: project_id
+          in: query
+          required: false
+          description: 所属プロジェクトで絞り込む。
+          schema:
+            type: string
+            format: uuid
+        - name: label_ids
+          in: query
+          required: false
+          description: 指定したラベルのいずれかが付いたタスクだけを返す（カンマ区切り）。ラベルのないタスクは返さない（TSK-BR-20）。
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: location_id
+          in: query
+          required: false
+          description: 外出先の場所で絞り込む。場所のないタスクは返さない（TSK-BR-20）。
+          schema:
+            type: string
+            format: uuid
+        - name: done
+          in: query
+          required: false
+          description: 完了状態で絞り込む。省略時は false（未完了のみ）（TSK-BR-21）。
+          schema:
+            type: boolean
+            default: false
+        - name: due_from
+          in: query
+          required: false
+          description: 期限がこの日時以降のタスクだけを返す。期限のないタスクは返さない。
+          schema:
+            type: string
+            format: date-time
+        - name: due_to
+          in: query
+          required: false
+          description: 期限がこの日時より前のタスクだけを返す。期限のないタスクは返さない。
+          schema:
+            type: string
+            format: date-time
+        - name: priority_min
+          in: query
+          required: false
+          description: 優先度がこの値以上のタスクだけを返す。1 以上を指定すると優先度未設定（0）のタスクは返さない（TSK-BR-20）。
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 5
+        - name: overdue
+          in: query
+          required: false
+          description: true なら期限切れ（is_overdue = true）のタスクだけ、false なら期限切れでないタスクだけを返す（TSK-BR-04）。
+          schema:
+            type: boolean
+        - name: repeating
+          in: query
+          required: false
+          description: true なら繰り返しタスクだけ、false なら単発タスクだけを返す。
+          schema:
+            type: boolean
+        - name: sort_by
+          in: query
+          required: false
+          description: 並べ替えの項目（TSK-BR-21）。
+          schema:
+            $ref: '#/components/schemas/TasksTaskSortField'
+        - name: order
+          in: query
+          required: false
+          description: 昇順・降順（TSK-BR-21）。
+          schema:
+            $ref: '#/components/schemas/TasksSortOrder'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: タスクの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksTaskPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [tasks]
+      operationId: tasksCreateTask
+      summary: タスクを登録する
+      description: |
+        タスクを登録する。project_id を省略すると利用者設定の既定プロジェクト（初期値は Inbox）に登録する（TSK-BR-01）。
+        優先度は 0〜5（TSK-BR-02）、進捗率は 0〜100（TSK-BR-03）。範囲外は 400。
+        開始日と終了日の両方があるときは 開始日 ≦ 終了日 でなければ 400（TSK-BR-05）。
+        期限に日付だけ（YYYY-MM-DD）を指定すると既定の期限時刻（未設定なら 23:59）を補う（TSK-BR-09）。
+        repeat を指定すると繰り返しタスク（定期家事）になる。間隔は 1 時間以上 10 年以下（TSK-BR-16）。
+        リマインダーは複数付けられる（TSK-BR-06）。ラベルは ID か名前で指定し、存在しない名前は新規に作成する（TSK-BR-23）。
+        アーカイブ中のプロジェクトへの登録は 409（TSK-BR-25）。index はプロジェクト内の連番で自動で振る（TSK-BR-26）。
+      x-lifepipe-requirements: [TSK-UC-01, TSK-UC-06, TSK-BR-01, TSK-BR-02, TSK-BR-03, TSK-BR-05, TSK-BR-06, TSK-BR-08, TSK-BR-09, TSK-BR-16, TSK-BR-23, TSK-BR-25, TSK-BR-26]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksTaskCreate'
+      responses:
+        '201':
+          description: 登録したタスク
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksTask'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /tasks/tasks/today:
+    get:
+      tags: [tasks]
+      operationId: tasksGetTodayTasks
+      summary: 当日が期限のタスクと期限切れのタスクを取得する
+      description: |
+        get_morning_briefing 用。利用者のタイムゾーンで当日 0:00 以上・翌日 0:00 未満に期限がある未完了タスク（繰り返しタスクを含む）を due_today に、
+        期限が当日 0:00 より前の未完了タスクを overdue に分けて返す（TSK-BR-18、TSK-BR-08）。
+        完了済みのタスクは含めない（TSK-BR-04）。
+      x-lifepipe-requirements: [TSK-UC-07, TSK-BR-04, TSK-BR-08, TSK-BR-18]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: date
+          in: query
+          required: false
+          description: 基準とする日付。省略時は利用者のタイムゾーンでの今日。
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 当日分と期限切れの2グループ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksTodayTasks'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tasks/tasks/outing:
+    get:
+      tags: [tasks]
+      operationId: tasksGetOutingTasks
+      summary: 外出先タスクを場所ごとに取得する
+      description: |
+        prepare_outing 用。location が設定された未完了タスクを場所ごとにまとめて返す（TSK-BR-19）。
+        場所の中では期限の早い順（期限なしは最後）、同じ期限なら優先度の高い順に並べる。
+        location_id を指定するとその場所のタスクだけを返す。
+      x-lifepipe-requirements: [TSK-UC-08, TSK-BR-19]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: location_id
+          in: query
+          required: false
+          description: 指定した場所のタスクだけを返す。
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 場所ごとの外出先タスク
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksOutingTasks'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/tasks/upcoming:
+    get:
+      tags: [tasks]
+      operationId: tasksGetUpcomingTasks
+      summary: 今後の期間に期限があるタスクを取得する
+      description: |
+        from 以上 to 未満に期限がある未完了タスクを期限の早い順に返す。
+        include_overdue で期限切れのタスクを、include_no_due で期限のないタスクを含められる。
+        日時の判定は利用者設定のタイムゾーンで行う（TSK-BR-08）。
+      x-lifepipe-requirements: [TSK-UC-15, TSK-BR-04, TSK-BR-08]
+      x-lifepipe-priority: later
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: 期間の開始。省略時は利用者のタイムゾーンでの今日の 0:00。
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: 期間の終了（この日時は含まない）。省略時は from の7日後。
+          schema:
+            type: string
+            format: date-time
+        - name: include_overdue
+          in: query
+          required: false
+          description: true なら期限切れの未完了タスクも含める。
+          schema:
+            type: boolean
+            default: false
+        - name: include_no_due
+          in: query
+          required: false
+          description: true なら期限のない未完了タスクも最後に含める。
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 期間内に期限があるタスク
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksUpcomingTasks'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tasks/tasks/{task_id}:
+    parameters:
+      - $ref: '#/components/parameters/TasksTaskId'
+    get:
+      tags: [tasks]
+      operationId: tasksGetTask
+      summary: タスクを取得する
+      description: |
+        タスクを取得する。is_overdue は未完了かつ期限が現在時刻より前なら true（TSK-BR-04）。
+        relative リマインダーの remind_at は基準日から計算した値で、基準日が未設定なら null（TSK-BR-06）。
+        リマインダーの配信（TSK-UC-16、後回し）は API を持たず、配信側は計算済みの remind_at をこの操作で読む。完了済みのタスクのリマインダーは発火させない（TSK-BR-07）。
+      x-lifepipe-requirements: [TSK-UC-02, TSK-UC-16, TSK-BR-04, TSK-BR-06, TSK-BR-07]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: タスク
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksTask'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [tasks]
+      operationId: tasksUpdateTask
+      summary: タスクを更新する
+      description: |
+        送った項目だけを更新する。完了状態は complete / uncomplete で変える（TSK-BR-10）。
+        値の範囲と日付の前後関係は登録と同じ（TSK-BR-02、TSK-BR-03、TSK-BR-05、TSK-BR-09、TSK-BR-16）。
+        repeat に null を送ると単発タスクに戻る（TSK-BR-11）。基準日が変わると relative リマインダーの remind_at を再計算する（TSK-BR-06）。
+        labels と reminders は送った配列で置き換える。ラベル名で指定された未登録のラベルは新規に作成する（TSK-BR-23）。
+        別プロジェクトへ移動すると移動先で新しい index を振る（TSK-BR-26）。
+        アーカイブ中のプロジェクトのタスクの更新、アーカイブ中のプロジェクトへの移動は 409（TSK-BR-25）。
+      x-lifepipe-requirements: [TSK-UC-02, TSK-UC-06, TSK-BR-02, TSK-BR-03, TSK-BR-05, TSK-BR-06, TSK-BR-09, TSK-BR-11, TSK-BR-16, TSK-BR-23, TSK-BR-25, TSK-BR-26]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksTaskUpdate'
+      responses:
+        '200':
+          description: 更新後のタスク
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksTask'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [tasks]
+      operationId: tasksDeleteTask
+      summary: タスクを削除する
+      description: タスクを即時削除する（ゴミ箱は後回し）。アーカイブ中のプロジェクトのタスクは 409（TSK-BR-25）。
+      x-lifepipe-requirements: [TSK-UC-02, TSK-BR-25]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /tasks/tasks/{task_id}/complete:
+    parameters:
+      - $ref: '#/components/parameters/TasksTaskId'
+    post:
+      tags: [tasks]
+      operationId: tasksCompleteTask
+      summary: タスクを完了にする
+      description: |
+        単発タスクは done = true、done_at = 完了日時にする。完了済みなら状態を変えずに返す（冪等、TSK-BR-10）。
+        繰り返しタスクは未完了のまま次回へ進める: 期限・開始日・終了日・absolute リマインダーを方式（default / from_completion / monthly）に従って進め、
+        last_completed_at を更新し、完了履歴を1件作り、説明中のチェックリストを未チェックに戻す（TSK-BR-11〜15）。
+        completed_at は省略時は現在時刻。過去は指定でき、未来は 400 で拒否する（TSK-BR-17）。
+        完了済みのタスクのリマインダーは発火させない（TSK-BR-07）。アーカイブ中のプロジェクトのタスクは 409（TSK-BR-25）。
+      x-lifepipe-requirements: [TSK-UC-03, TSK-UC-06, TSK-BR-07, TSK-BR-10, TSK-BR-11, TSK-BR-12, TSK-BR-13, TSK-BR-14, TSK-BR-15, TSK-BR-17, TSK-BR-25]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksTaskCompleteRequest'
+      responses:
+        '200':
+          description: 更新後のタスク
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksTask'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /tasks/tasks/{task_id}/uncomplete:
+    parameters:
+      - $ref: '#/components/parameters/TasksTaskId'
+    post:
+      tags: [tasks]
+      operationId: tasksUncompleteTask
+      summary: 完了したタスクを未完了に戻す
+      description: |
+        done = false、done_at = null にする。未完了のタスクには状態を変えずに現在の状態を返す（冪等、TSK-BR-10）。
+        繰り返しタスクは常に未完了のため、状態は変わらない（TSK-BR-11）。アーカイブ中のプロジェクトのタスクは 409（TSK-BR-25）。
+      x-lifepipe-requirements: [TSK-UC-04, TSK-BR-10, TSK-BR-11, TSK-BR-25]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 更新後のタスク
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksTask'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /tasks/tasks/{task_id}/completions:
+    parameters:
+      - $ref: '#/components/parameters/TasksTaskId'
+    get:
+      tags: [tasks]
+      operationId: tasksListTaskCompletions
+      summary: 繰り返しタスクの完了履歴を一覧する
+      description: 完了日時の降順で返す。完了履歴は繰り返しタスクの完了操作のたびに1件作られる（TSK-BR-11）。
+      x-lifepipe-requirements: [TSK-UC-12, TSK-BR-11, TSK-BR-22]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 完了履歴の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksCompletionRecordPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/labels:
+    get:
+      tags: [tasks]
+      operationId: tasksListLabels
+      summary: ラベルを一覧する
+      x-lifepipe-requirements: [TSK-UC-10, TSK-BR-22]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: ラベルの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksLabelPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [tasks]
+      operationId: tasksCreateLabel
+      summary: ラベルを登録する
+      description: ラベルはプロジェクトに属さない。ラベル名は利用者内で一意で、重複は 409（TSK-BR-23）。
+      x-lifepipe-requirements: [TSK-UC-10, TSK-BR-23]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksLabelCreate'
+      responses:
+        '201':
+          description: 登録したラベル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksLabel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /tasks/labels/{label_id}:
+    parameters:
+      - $ref: '#/components/parameters/TasksLabelId'
+    get:
+      tags: [tasks]
+      operationId: tasksGetLabel
+      summary: ラベルを取得する
+      x-lifepipe-requirements: [TSK-UC-10]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: ラベル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksLabel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [tasks]
+      operationId: tasksUpdateLabel
+      summary: ラベルを更新する
+      description: 送った項目だけを更新する。ラベル名の重複は 409（TSK-BR-23）。
+      x-lifepipe-requirements: [TSK-UC-10, TSK-BR-23]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksLabelUpdate'
+      responses:
+        '200':
+          description: 更新後のラベル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksLabel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [tasks]
+      operationId: tasksDeleteLabel
+      summary: ラベルを削除する
+      description: ラベルを削除し、付いているタスクからも外す。タスクは残る（TSK-BR-23）。
+      x-lifepipe-requirements: [TSK-UC-10, TSK-BR-23]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/locations:
+    get:
+      tags: [tasks]
+      operationId: tasksListLocations
+      summary: 外出先の場所を一覧する
+      x-lifepipe-requirements: [TSK-UC-11, TSK-BR-22]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: category
+          in: query
+          required: false
+          description: 場所の種類で絞り込む。種類が未設定の場所は返さない（TSK-BR-20）。
+          schema:
+            $ref: '#/components/schemas/TasksLocationCategory'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 場所の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksLocationPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [tasks]
+      operationId: tasksCreateLocation
+      summary: 外出先の場所を登録する
+      description: 場所名は利用者内で一意で、重複は 409（TSK-BR-27）。
+      x-lifepipe-requirements: [TSK-UC-11, TSK-BR-27]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksLocationCreate'
+      responses:
+        '201':
+          description: 登録した場所
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksLocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /tasks/locations/{location_id}:
+    parameters:
+      - $ref: '#/components/parameters/TasksLocationId'
+    get:
+      tags: [tasks]
+      operationId: tasksGetLocation
+      summary: 外出先の場所を取得する
+      x-lifepipe-requirements: [TSK-UC-11]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 場所
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksLocation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [tasks]
+      operationId: tasksUpdateLocation
+      summary: 外出先の場所を更新する
+      description: 送った項目だけを更新する。場所名の重複は 409（TSK-BR-27）。
+      x-lifepipe-requirements: [TSK-UC-11, TSK-BR-27]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksLocationUpdate'
+      responses:
+        '200':
+          description: 更新後の場所
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksLocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [tasks]
+      operationId: tasksDeleteLocation
+      summary: 外出先の場所を削除する
+      description: 場所を削除し、その場所が設定されたタスクの location を null にする。タスクは残る（TSK-BR-27）。
+      x-lifepipe-requirements: [TSK-UC-11, TSK-BR-27]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/settings:
+    get:
+      tags: [tasks]
+      operationId: tasksGetSettings
+      summary: 利用者設定を取得する
+      description: 利用者ごとに1件。タイムゾーンは当日・期限切れ・リマインダーの判定に使う（TSK-BR-08）。
+      x-lifepipe-requirements: [TSK-UC-13, TSK-BR-08]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 利用者設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksUserSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [tasks]
+      operationId: tasksUpdateSettings
+      summary: 利用者設定を更新する
+      description: |
+        送った項目だけを更新する。timezone は IANA タイムゾーン名で、不明な名前は 400（TSK-BR-08）。
+        default_project_id は存在するプロジェクトでなければ 404（TSK-BR-01）。
+        default_due_time は日付だけの期限に補う時刻で、null で未設定（23:59 を補う）に戻す（TSK-BR-09）。
+      x-lifepipe-requirements: [TSK-UC-13, TSK-BR-01, TSK-BR-08, TSK-BR-09]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasksUserSettingsUpdate'
+      responses:
+        '200':
+          description: 更新後の利用者設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksUserSettings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    TasksProjectId:
+      name: project_id
+      in: path
+      required: true
+      description: プロジェクトの ID
+      schema:
+        type: string
+        format: uuid
+    TasksTaskId:
+      name: task_id
+      in: path
+      required: true
+      description: タスクの ID
+      schema:
+        type: string
+        format: uuid
+    TasksLabelId:
+      name: label_id
+      in: path
+      required: true
+      description: ラベルの ID
+      schema:
+        type: string
+        format: uuid
+    TasksLocationId:
+      name: location_id
+      in: path
+      required: true
+      description: 外出先の場所の ID
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    # ---- enums ----
+    TasksRepeatMode:
+      type: string
+      description: 次回日付の計算方式。default = 元の期限を起点（TSK-BR-12）、from_completion = 完了日時を起点（TSK-BR-13）、monthly = 毎月同じ日（TSK-BR-14）。
+      enum: [default, from_completion, monthly]
+    TasksRepeatIntervalUnit:
+      type: string
+      description: 繰り返し間隔の単位
+      enum: [hour, day, week]
+    TasksReminderKind:
+      type: string
+      description: absolute = 日時指定、relative = タスクの日付からの相対指定
+      enum: [absolute, relative]
+    TasksReminderRelativeTo:
+      type: string
+      description: 相対リマインダーの基準となる日付
+      enum: [due_date, start_date, end_date]
+    TasksLocationCategory:
+      type: string
+      description: 場所の種類
+      enum: [store, public_office, post_office, bank, medical, other]
+    TasksTaskSortField:
+      type: string
+      description: タスク一覧の並べ替え項目（TSK-BR-21）。省略時は due_date。
+      enum: [due_date, start_date, end_date, priority, percent_done, created_at, updated_at, title]
+      default: due_date
+    TasksSortOrder:
+      type: string
+      description: 並べ替えの向き。省略時は asc。
+      enum: [asc, desc]
+      default: asc
+
+    # ---- project ----
+    TasksProject:
+      type: object
+      description: タスクをまとめるリスト。階層を持てる。
+      required: [id, title, is_inbox, is_archived, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          minLength: 1
+          description: 表示名
+          example: 家事
+        description:
+          type: string
+          description: 説明
+        parent_project_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 親プロジェクト。null なら最上位（TSK-BR-24）
+        identifier:
+          type: string
+          nullable: true
+          description: タスク参照用の短い識別子。全プロジェクトで一意（TSK-BR-26）
+          example: HOME
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          description: 表示色（16進カラーコード）
+          example: '#4caf50'
+        is_inbox:
+          type: boolean
+          readOnly: true
+          description: Inbox（既定の登録先）なら true。利用者ごとに1つで、削除できない（TSK-BR-01）
+        is_archived:
+          type: boolean
+          readOnly: true
+          description: アーカイブ済みなら true。アーカイブ中は読み取り専用（TSK-BR-25）
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    TasksProjectCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          example: 家事
+        description:
+          type: string
+        parent_project_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 親プロジェクト。省略または null なら最上位
+        identifier:
+          type: string
+          nullable: true
+          description: 全プロジェクトで一意（TSK-BR-26）
+          example: HOME
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+    TasksProjectUpdate:
+      type: object
+      description: 送った項目だけを更新する。アーカイブ状態は archive 操作で変える。
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        parent_project_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: null で最上位に移す。自分自身や子孫は指定できない（TSK-BR-24）
+        identifier:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+    TasksProjectPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksProject'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 200
+
+    # ---- repeat / reminder ----
+    TasksRepeatRule:
+      type: object
+      description: |
+        繰り返し設定。mode が default または from_completion のときは interval_value と interval_unit が必須。
+        間隔は 1 時間以上 10 年以下（TSK-BR-16）。monthly は間隔の値を使わない（TSK-BR-14）。
+      required: [mode]
+      properties:
+        mode:
+          $ref: '#/components/schemas/TasksRepeatMode'
+        interval_value:
+          type: integer
+          minimum: 1
+          maximum: 87660
+          nullable: true
+          description: 間隔の数値（1 以上）。単位と合わせて 10 年以下（hour なら 87660、day なら 3652、week なら 521 まで）
+          example: 3
+        interval_unit:
+          allOf:
+            - $ref: '#/components/schemas/TasksRepeatIntervalUnit'
+          type: string
+          nullable: true
+    TasksReminder:
+      type: object
+      description: タスクに付くリマインダー（TSK-BR-06）
+      required: [id, kind]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        kind:
+          $ref: '#/components/schemas/TasksReminderKind'
+        remind_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 通知日時。relative のときは基準日から計算した値で、基準日が未設定なら null
+        relative_to:
+          $ref: '#/components/schemas/TasksReminderRelativeTo'
+        relative_offset_seconds:
+          type: integer
+          description: 基準日からのずれ（秒）。負の値は基準日より前
+          example: -3600
+    TasksReminderInput:
+      type: object
+      description: |
+        リマインダーの指定。kind が absolute なら remind_at が必須。
+        kind が relative なら relative_to と relative_offset_seconds が必須で、remind_at は受け付けない（計算する）（TSK-BR-06）。
+      required: [kind]
+      properties:
+        kind:
+          $ref: '#/components/schemas/TasksReminderKind'
+        remind_at:
+          type: string
+          format: date-time
+        relative_to:
+          $ref: '#/components/schemas/TasksReminderRelativeTo'
+        relative_offset_seconds:
+          type: integer
+          example: -3600
+
+    # ---- label ref ----
+    TasksLabelRef:
+      type: object
+      description: タスクに付けるラベルの指定。id と title のどちらか一方を指定する。title のラベルが存在しなければ新規に作成する（TSK-BR-23）。
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          example: 買い出し
+
+    # ---- task ----
+    TasksTask:
+      type: object
+      required: [id, project_id, index, title, done, done_at, priority, percent_done, labels, reminders, repeat, is_overdue, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        project_id:
+          type: string
+          format: uuid
+          description: 所属プロジェクト（TSK-BR-01）
+        index:
+          type: integer
+          minimum: 1
+          readOnly: true
+          description: プロジェクト内の連番。プロジェクトの identifier と組み合わせて HOME-12 のような参照を作る（TSK-BR-26）
+          example: 12
+        title:
+          type: string
+          minLength: 1
+          example: 燃えるゴミを出す
+        description:
+          type: string
+          description: 説明（Markdown。チェックリスト `- [ ]` を含められる）
+        done:
+          type: boolean
+          readOnly: true
+          description: 完了済みなら true。繰り返しタスクは常に false（TSK-BR-11）
+        done_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+          description: 完了日時。未完了なら null（TSK-BR-10）
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+          description: 期限（この時刻までに終える）（TSK-BR-04）
+        start_date:
+          type: string
+          format: date-time
+          nullable: true
+          description: 作業予定期間の開始（TSK-BR-05）
+        end_date:
+          type: string
+          format: date-time
+          nullable: true
+          description: 作業予定期間の終了。開始日 ≦ 終了日（TSK-BR-05）
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 0
+          description: 優先度。0 = 未設定、1 = 低 〜 5 = 今すぐ（TSK-BR-02）
+        percent_done:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 0
+          description: 進捗率（TSK-BR-03）
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          description: 表示色
+        labels:
+          type: array
+          description: 付いているラベル
+          items:
+            $ref: '#/components/schemas/TasksLabel'
+        reminders:
+          type: array
+          description: リマインダー
+          items:
+            $ref: '#/components/schemas/TasksReminder'
+        repeat:
+          allOf:
+            - $ref: '#/components/schemas/TasksRepeatRule'
+          type: object
+          nullable: true
+          description: 繰り返し設定。null なら単発タスク
+        last_completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+          description: 繰り返しタスクを最後に完了した日時（TSK-BR-11）
+        location_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 外出先の場所。設定されていれば外出先タスク（TSK-BR-19）
+        is_overdue:
+          type: boolean
+          readOnly: true
+          description: 未完了かつ期限が現在時刻より前なら true（TSK-BR-04）
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    TasksTaskCreate:
+      type: object
+      required: [title]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+          description: 所属プロジェクト。省略すると利用者設定の既定プロジェクト（TSK-BR-01）
+        title:
+          type: string
+          minLength: 1
+          example: 燃えるゴミを出す
+        description:
+          type: string
+        due_date:
+          $ref: '#/components/schemas/TasksDueDateInput'
+        start_date:
+          type: string
+          format: date-time
+          nullable: true
+        end_date:
+          type: string
+          format: date-time
+          nullable: true
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 0
+        percent_done:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 0
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        labels:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksLabelRef'
+        reminders:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksReminderInput'
+        repeat:
+          allOf:
+            - $ref: '#/components/schemas/TasksRepeatRule'
+          type: object
+          nullable: true
+        location_id:
+          type: string
+          format: uuid
+          nullable: true
+    TasksTaskUpdate:
+      type: object
+      description: 送った項目だけを更新する。labels と reminders は送った配列で置き換える。完了状態は complete / uncomplete で変える。
+      properties:
+        project_id:
+          type: string
+          format: uuid
+          description: 別プロジェクトへ移動すると移動先で新しい index を振る（TSK-BR-26）
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        due_date:
+          $ref: '#/components/schemas/TasksDueDateInput'
+        start_date:
+          type: string
+          format: date-time
+          nullable: true
+        end_date:
+          type: string
+          format: date-time
+          nullable: true
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 5
+        percent_done:
+          type: integer
+          minimum: 0
+          maximum: 100
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        labels:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksLabelRef'
+        reminders:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksReminderInput'
+        repeat:
+          allOf:
+            - $ref: '#/components/schemas/TasksRepeatRule'
+          type: object
+          nullable: true
+          description: null で繰り返しを外し、単発タスクにする（TSK-BR-11）
+        location_id:
+          type: string
+          format: uuid
+          nullable: true
+    TasksDueDateInput:
+      type: string
+      nullable: true
+      description: |
+        期限の入力。RFC 3339 の日時（タイムゾーンオフセット付き）か、日付だけ（YYYY-MM-DD）。
+        日付だけなら利用者設定の default_due_time（未設定なら 23:59）を利用者のタイムゾーンで補う（TSK-BR-08、TSK-BR-09）。
+      pattern: '^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2}))?$'
+      example: '2026-11-20T18:00:00+09:00'
+    TasksTaskCompleteRequest:
+      type: object
+      properties:
+        completed_at:
+          type: string
+          format: date-time
+          description: 完了日時。省略時は現在時刻。過去は指定でき、未来は拒否する（TSK-BR-17）
+    TasksTaskPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksTask'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 200
+
+    # ---- briefing / outing / upcoming ----
+    TasksBriefingTask:
+      type: object
+      description: get_morning_briefing 用のタスクの要約
+      required: [id, project_id, project_title, title, due_date, priority, labels, is_repeating, is_overdue]
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        project_title:
+          type: string
+          description: 所属プロジェクトの表示名
+          example: 家事
+        title:
+          type: string
+          example: 燃えるゴミを出す
+        due_date:
+          type: string
+          format: date-time
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 5
+        labels:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksLabel'
+        is_repeating:
+          type: boolean
+          description: 繰り返しタスク（定期家事）なら true
+        is_overdue:
+          type: boolean
+    TasksTodayTasks:
+      type: object
+      description: 当日が期限の未完了タスクと期限切れの未完了タスク（TSK-BR-18）
+      required: [date, timezone, due_today, overdue]
+      properties:
+        date:
+          type: string
+          format: date
+          description: 基準とした日付（利用者のタイムゾーン）
+        timezone:
+          type: string
+          description: 判定に使った IANA タイムゾーン名
+          example: Asia/Tokyo
+        due_today:
+          type: array
+          description: 当日 0:00 以上・翌日 0:00 未満に期限がある未完了タスク。期限の早い順
+          items:
+            $ref: '#/components/schemas/TasksBriefingTask'
+        overdue:
+          type: array
+          description: 期限が当日 0:00 より前の未完了タスク。期限の早い順
+          items:
+            $ref: '#/components/schemas/TasksBriefingTask'
+    TasksOutingGroup:
+      type: object
+      description: 1つの場所の外出先タスク。期限の早い順（期限なしは最後）、同じ期限なら優先度の高い順（TSK-BR-19）
+      required: [location, tasks]
+      properties:
+        location:
+          $ref: '#/components/schemas/TasksLocation'
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksTask'
+    TasksOutingTasks:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          description: 場所ごとのグループ。タスクのない場所は含めない
+          items:
+            $ref: '#/components/schemas/TasksOutingGroup'
+    TasksUpcomingTasks:
+      type: object
+      required: [from, to, items]
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        items:
+          type: array
+          description: 期限の早い順。include_no_due のとき期限なしは最後
+          items:
+            $ref: '#/components/schemas/TasksTask'
+
+    # ---- completion record ----
+    TasksCompletionRecord:
+      type: object
+      description: 繰り返しタスクの完了履歴（TSK-BR-11）
+      required: [id, task_id, completed_at, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        task_id:
+          type: string
+          format: uuid
+        completed_at:
+          type: string
+          format: date-time
+          description: 完了日時
+        due_date_at_completion:
+          type: string
+          format: date-time
+          nullable: true
+          description: 完了した時点の期限
+        next_due_date:
+          type: string
+          format: date-time
+          nullable: true
+          description: 完了によって計算された次回の期限
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+    TasksCompletionRecordPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksCompletionRecord'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 200
+
+    # ---- label ----
+    TasksLabel:
+      type: object
+      description: プロジェクトをまたいでタスクを分類するタグ（TSK-BR-23）
+      required: [id, title, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          minLength: 1
+          description: ラベル名。利用者内で一意
+          example: 買い出し
+        description:
+          type: string
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    TasksLabelCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          example: 買い出し
+        description:
+          type: string
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+    TasksLabelUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+    TasksLabelPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksLabel'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 200
+
+    # ---- location ----
+    TasksLocation:
+      type: object
+      description: 外出先の場所（LifePipe 独自）
+      required: [id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          description: 場所の名前。利用者内で一意（TSK-BR-27）
+          example: ドラッグストア
+        category:
+          allOf:
+            - $ref: '#/components/schemas/TasksLocationCategory'
+          type: string
+          nullable: true
+        note:
+          type: string
+          description: 補足（営業時間の目安など）
+          example: 10時から21時
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    TasksLocationCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          example: 郵便局
+        category:
+          allOf:
+            - $ref: '#/components/schemas/TasksLocationCategory'
+          type: string
+          nullable: true
+        note:
+          type: string
+    TasksLocationUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        category:
+          allOf:
+            - $ref: '#/components/schemas/TasksLocationCategory'
+          type: string
+          nullable: true
+        note:
+          type: string
+    TasksLocationPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksLocation'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 200
+
+    # ---- settings ----
+    TasksUserSettings:
+      type: object
+      description: 利用者設定。利用者ごとに1件
+      required: [timezone, default_project_id, updated_at]
+      properties:
+        timezone:
+          type: string
+          minLength: 1
+          description: IANA タイムゾーン名。当日・期限切れ・リマインダーの判定に使う（TSK-BR-08）
+          example: Asia/Tokyo
+        default_project_id:
+          type: string
+          format: uuid
+          description: プロジェクト省略時の登録先。既定は Inbox（TSK-BR-01）
+        default_due_time:
+          type: string
+          nullable: true
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+          description: 日付だけ指定された期限に補う時刻（HH:MM）。null なら 23:59 を補う（TSK-BR-09）
+          example: '18:00'
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    TasksUserSettingsUpdate:
+      type: object
+      properties:
+        timezone:
+          type: string
+          minLength: 1
+          example: Asia/Tokyo
+        default_project_id:
+          type: string
+          format: uuid
+        default_due_time:
+          type: string
+          nullable: true
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'

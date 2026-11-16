@@ -1,0 +1,3172 @@
+# pantry fragment
+paths:
+  /pantry/products:
+    get:
+      operationId: pantryListProducts
+      tags: [pantry]
+      summary: 商品を一覧・検索する
+      description: |
+        商品を名前の部分一致・保管場所・商品グループ・在庫の有無・有効/無効で絞り込む。
+        active を省略すると有効な商品だけを返す（PAN-BR-03）。各商品に在庫の要約を含める。
+      x-lifepipe-requirements: [PAN-UC-02, PAN-BR-03]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: q
+          in: query
+          description: 商品名の部分一致（大文字小文字と前後の空白を区別しない）
+          schema:
+            type: string
+        - name: location_id
+          in: query
+          description: 既定の保管場所、またはその場所に在庫エントリを持つ商品
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PantryProductGroupIdQuery'
+        - name: in_stock
+          in: query
+          description: true なら在庫数量が 0 より大きい商品、false なら在庫のない商品
+          schema:
+            type: boolean
+        - name: active
+          in: query
+          description: 有効/無効で絞り込む。省略時は true（PAN-BR-03）
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: 商品の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryProductPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: pantryCreateProduct
+      tags: [pantry]
+      summary: 商品を登録する
+      description: |
+        商品名は世帯内で一意。重複は 409（PAN-BR-01）。
+        purchase_quantity_unit_id・consume_quantity_unit_id を省略すると在庫単位を設定する。
+      x-lifepipe-requirements: [PAN-UC-01, PAN-BR-01, PAN-BR-02, PAN-BR-04, PAN-BR-05]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryProductCreate'
+      responses:
+        '201':
+          description: 登録した商品
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryProduct'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/products/{product_id}:
+    parameters:
+      - $ref: '#/components/parameters/PantryProductId'
+    get:
+      operationId: pantryGetProduct
+      tags: [pantry]
+      summary: 商品を取得する
+      description: 在庫の要約（在庫数量、開封済み数量、次の期限日、最低在庫を下回っているか）を含める（PAN-BR-08、PAN-BR-19）。
+      x-lifepipe-requirements: [PAN-UC-01, PAN-UC-02, PAN-BR-08, PAN-BR-19]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 商品
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryProduct'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: pantryUpdateProduct
+      tags: [pantry]
+      summary: 商品を更新・無効化する
+      description: |
+        送った項目だけを更新する。無効化は active=false（PAN-BR-03）。名前の重複は 409（PAN-BR-01）。
+        在庫エントリか履歴を持つ商品の在庫単位を変えるには旧単位から新単位への換算が必要で、
+        既存の在庫エントリの数量と単価を新単位へ換算する。換算できなければ 422（PAN-BR-18）。
+      x-lifepipe-requirements: [PAN-UC-01, PAN-BR-01, PAN-BR-03, PAN-BR-18]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryProductUpdate'
+      responses:
+        '200':
+          description: 更新した商品
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryProduct'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: pantryDeleteProduct
+      tags: [pantry]
+      summary: 商品を削除する
+      description: |
+        商品の在庫エントリ・履歴・買い物リスト項目・商品ごとの換算もあわせて削除する。
+        在庫や履歴を持つ商品は、削除より無効化を推奨する（PAN-BR-03）。
+      x-lifepipe-requirements: [PAN-UC-01, PAN-BR-03]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /pantry/products/{product_id}/stock:
+    parameters:
+      - $ref: '#/components/parameters/PantryProductId'
+    get:
+      operationId: pantryGetProductStock
+      tags: [pantry]
+      summary: 商品の在庫数量と在庫エントリを取得する
+      description: 在庫数量（在庫単位）と、期限日・保管場所・開封状態ごとの在庫エントリの一覧を返す。エントリは PAN-BR-11 の消費順に並べる。
+      x-lifepipe-requirements: [PAN-UC-10, PAN-BR-11, PAN-BR-19]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 商品の在庫
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryProductStock'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /pantry/products/{product_id}/purchase:
+    parameters:
+      - $ref: '#/components/parameters/PantryProductId'
+    post:
+      operationId: pantryPurchaseProduct
+      tags: [pantry]
+      summary: 購入した商品を在庫に加える
+      description: |
+        購入 1 件ごとに在庫エントリを 1 つ作る。保管場所の省略時は商品の既定の保管場所（PAN-BR-16）。
+        数量は在庫単位へ換算して保存し、使えない単位は 422（PAN-BR-10）。
+        期限日は PAN-BR-06 で決める（期限日なし・既定日数なしは 422）。
+        今日以前の期限日、既存エントリより早い期限日は登録したうえで warnings に入れる（PAN-BR-06、PAN-BR-17）。
+        価格は unit_price（購入単位あたり）か total_price のどちらかで受け取り、在庫単位あたりに換算する（PAN-BR-16）。
+      x-lifepipe-requirements: [PAN-UC-06, PAN-BR-02, PAN-BR-05, PAN-BR-06, PAN-BR-10, PAN-BR-16, PAN-BR-17, PAN-BR-28]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryPurchaseRequest'
+      responses:
+        '201':
+          description: 作成した在庫エントリと履歴
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryPurchaseResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/products/{product_id}/consume:
+    parameters:
+      - $ref: '#/components/parameters/PantryProductId'
+    post:
+      operationId: pantryConsumeProduct
+      tags: [pantry]
+      summary: 商品を消費・廃棄する
+      description: |
+        廃棄は spoiled=true の消費（PAN-BR-15）。stock_entry_id を省略すると PAN-BR-11 の順にエントリを選び、
+        複数エントリにまたがる場合は同じ correlation_id で履歴をまとめる（PAN-BR-12）。
+        在庫が足りなければ何も変えずに 422（PAN-BR-13）。
+        自動追加が有効なら、最低在庫を下回った商品を既定の買い物リストへ追加し、結果に含める（PAN-BR-20、PAN-BR-21）。
+      x-lifepipe-requirements: [PAN-UC-07, PAN-UC-09, PAN-UC-13, PAN-BR-10, PAN-BR-11, PAN-BR-12, PAN-BR-13, PAN-BR-15, PAN-BR-20, PAN-BR-21, PAN-BR-28]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryConsumeRequest'
+      responses:
+        '200':
+          description: 在庫の変更結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryStockOperationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/products/{product_id}/open:
+    parameters:
+      - $ref: '#/components/parameters/PantryProductId'
+    post:
+      operationId: pantryOpenProduct
+      tags: [pantry]
+      summary: 商品を開封済みにする
+      description: |
+        未開封のエントリだけを対象に PAN-BR-11 の順で選ぶ。数量がエントリより少なければ開封分を分割する。
+        default_due_days_after_open があれば期限日を min(元の期限日, 今日 + 日数) にする（PAN-BR-14）。
+        can_be_opened が false の商品と在庫不足は 422（PAN-BR-13、PAN-BR-14）。
+      x-lifepipe-requirements: [PAN-UC-08, PAN-UC-13, PAN-BR-10, PAN-BR-11, PAN-BR-13, PAN-BR-14, PAN-BR-20, PAN-BR-28]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryOpenRequest'
+      responses:
+        '200':
+          description: 在庫の変更結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryStockOperationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/products/{product_id}/transfer:
+    parameters:
+      - $ref: '#/components/parameters/PantryProductId'
+    post:
+      operationId: pantryTransferProduct
+      tags: [pantry]
+      summary: 保管場所間で在庫を移動する
+      description: |
+        冷凍庫でない場所から冷凍庫へ移すと default_due_days_after_freezing、冷凍庫から出すと
+        default_due_days_after_thawing に従って期限日を変える（PAN-BR-23）。
+        履歴は transfer_from と transfer_to を同じ correlation_id で記録する（PAN-BR-28）。在庫不足は 422（PAN-BR-13）。
+      x-lifepipe-requirements: [PAN-UC-21, PAN-BR-10, PAN-BR-11, PAN-BR-13, PAN-BR-23, PAN-BR-28]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryTransferRequest'
+      responses:
+        '200':
+          description: 在庫の変更結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryStockOperationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/products/{product_id}/inventory:
+    parameters:
+      - $ref: '#/components/parameters/PantryProductId'
+    post:
+      operationId: pantryInventoryProduct
+      tags: [pantry]
+      summary: 棚卸しで在庫数量を補正する
+      description: |
+        実数と現在の在庫数量の差を求め、増える場合は新しい在庫エントリ（期限日は PAN-BR-06）を作り、
+        減る場合は PAN-BR-11 の順で引く。履歴の type は inventory_correction（PAN-BR-29）。
+        結果として最低在庫を下回れば自動追加の対象になる（PAN-BR-20）。
+      x-lifepipe-requirements: [PAN-UC-20, PAN-BR-06, PAN-BR-10, PAN-BR-11, PAN-BR-20, PAN-BR-28, PAN-BR-29]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryInventoryRequest'
+      responses:
+        '200':
+          description: 在庫の変更結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryStockOperationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/products/{product_id}/merge:
+    parameters:
+      - $ref: '#/components/parameters/PantryProductId'
+    post:
+      operationId: pantryMergeProduct
+      tags: [pantry]
+      summary: 商品を別の商品へ統合する
+      description: パスの商品の履歴・在庫エントリ・買い物リスト項目を統合先の商品へ寄せ、パスの商品を削除する。自分自身への統合は 422。
+      x-lifepipe-requirements: [PAN-UC-28]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryProductMergeRequest'
+      responses:
+        '200':
+          description: 統合先の商品
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryProduct'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/products/{product_id}/quantity-units:
+    parameters:
+      - $ref: '#/components/parameters/PantryProductId'
+    get:
+      operationId: pantryListProductQuantityUnits
+      tags: [pantry]
+      summary: 商品で使える数量単位を一覧する
+      description: その商品で使える単位と、在庫単位への factor（PAN-BR-10 で解決した値）を返す。
+      x-lifepipe-requirements: [PAN-UC-04, PAN-UC-06, PAN-BR-10]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 使える単位の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryProductQuantityUnitPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /pantry/product-groups:
+    get:
+      operationId: pantryListProductGroups
+      tags: [pantry]
+      summary: 商品グループを一覧する
+      description: sort_order の昇順、同順なら名前順に返す。
+      x-lifepipe-requirements: [PAN-UC-26]
+      x-lifepipe-priority: later
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 商品グループの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryProductGroupPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: pantryCreateProductGroup
+      tags: [pantry]
+      summary: 商品グループを登録する
+      description: グループ名は世帯内で一意。重複は 409（PAN-BR-01）。
+      x-lifepipe-requirements: [PAN-UC-26, PAN-BR-01]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryProductGroupCreate'
+      responses:
+        '201':
+          description: 登録した商品グループ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryProductGroup'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /pantry/product-groups/{product_group_id}:
+    parameters:
+      - $ref: '#/components/parameters/PantryProductGroupId'
+    get:
+      operationId: pantryGetProductGroup
+      tags: [pantry]
+      summary: 商品グループを取得する
+      x-lifepipe-requirements: [PAN-UC-26]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 商品グループ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryProductGroup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: pantryUpdateProductGroup
+      tags: [pantry]
+      summary: 商品グループを更新する
+      description: 名前の重複は 409（PAN-BR-01）。
+      x-lifepipe-requirements: [PAN-UC-26, PAN-BR-01]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryProductGroupUpdate'
+      responses:
+        '200':
+          description: 更新した商品グループ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryProductGroup'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: pantryDeleteProductGroup
+      tags: [pantry]
+      summary: 商品グループを削除する
+      description: 商品から参照されているグループは削除できない（409）。
+      x-lifepipe-requirements: [PAN-UC-26]
+      x-lifepipe-priority: later
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /pantry/quantity-units:
+    get:
+      operationId: pantryListQuantityUnits
+      tags: [pantry]
+      summary: 数量単位を一覧する
+      x-lifepipe-requirements: [PAN-UC-03]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 数量単位の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryQuantityUnitPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: pantryCreateQuantityUnit
+      tags: [pantry]
+      summary: 数量単位を登録する
+      description: 単位名は世帯内で一意。重複は 409（PAN-BR-01）。
+      x-lifepipe-requirements: [PAN-UC-03, PAN-BR-01]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryQuantityUnitCreate'
+      responses:
+        '201':
+          description: 登録した数量単位
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryQuantityUnit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /pantry/quantity-units/{quantity_unit_id}:
+    parameters:
+      - $ref: '#/components/parameters/PantryQuantityUnitId'
+    get:
+      operationId: pantryGetQuantityUnit
+      tags: [pantry]
+      summary: 数量単位を取得する
+      x-lifepipe-requirements: [PAN-UC-03]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 数量単位
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryQuantityUnit'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: pantryUpdateQuantityUnit
+      tags: [pantry]
+      summary: 数量単位を更新する
+      description: 名前の重複は 409（PAN-BR-01）。
+      x-lifepipe-requirements: [PAN-UC-03, PAN-BR-01]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryQuantityUnitUpdate'
+      responses:
+        '200':
+          description: 更新した数量単位
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryQuantityUnit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: pantryDeleteQuantityUnit
+      tags: [pantry]
+      summary: 数量単位を削除する
+      description: 商品・換算・買い物リスト項目から参照されている単位は削除できない（409）。
+      x-lifepipe-requirements: [PAN-UC-03]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /pantry/quantity-unit-conversions:
+    get:
+      operationId: pantryListQuantityUnitConversions
+      tags: [pantry]
+      summary: 数量単位の換算を一覧する
+      description: 自動で作られた逆向きの換算も含めて返す（PAN-BR-09）。
+      x-lifepipe-requirements: [PAN-UC-04, PAN-BR-09]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: product_id
+          in: query
+          description: 指定した商品専用の換算だけを返す
+          schema:
+            type: string
+            format: uuid
+        - name: quantity_unit_id
+          in: query
+          description: 換算元または換算先がこの単位の換算を返す
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 換算の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryQuantityUnitConversionPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: pantryCreateQuantityUnitConversion
+      tags: [pantry]
+      summary: 数量単位の換算を登録する
+      description: |
+        「from 1 単位 = to の factor 単位」で登録し、逆向き（factor の逆数）の換算を自動で作る。
+        from = to は 422、同じ from・to・product_id の組の重複は 409（PAN-BR-09）。
+      x-lifepipe-requirements: [PAN-UC-04, PAN-BR-09]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryQuantityUnitConversionCreate'
+      responses:
+        '201':
+          description: 登録した換算
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryQuantityUnitConversion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/quantity-unit-conversions/{conversion_id}:
+    parameters:
+      - $ref: '#/components/parameters/PantryQuantityUnitConversionId'
+    get:
+      operationId: pantryGetQuantityUnitConversion
+      tags: [pantry]
+      summary: 数量単位の換算を取得する
+      x-lifepipe-requirements: [PAN-UC-04]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 換算
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryQuantityUnitConversion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: pantryUpdateQuantityUnitConversion
+      tags: [pantry]
+      summary: 数量単位の換算を更新する
+      description: 逆向きの換算もあわせて更新する（PAN-BR-09）。from = to は 422、組の重複は 409。
+      x-lifepipe-requirements: [PAN-UC-04, PAN-BR-09]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryQuantityUnitConversionUpdate'
+      responses:
+        '200':
+          description: 更新した換算
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryQuantityUnitConversion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: pantryDeleteQuantityUnitConversion
+      tags: [pantry]
+      summary: 数量単位の換算を削除する
+      description: 逆向きの換算もあわせて削除する（PAN-BR-09）。
+      x-lifepipe-requirements: [PAN-UC-04, PAN-BR-09]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /pantry/locations:
+    get:
+      operationId: pantryListLocations
+      tags: [pantry]
+      summary: 保管場所を一覧する
+      x-lifepipe-requirements: [PAN-UC-05]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 保管場所の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryLocationPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: pantryCreateLocation
+      tags: [pantry]
+      summary: 保管場所を登録する
+      description: 場所名は世帯内で一意。重複は 409（PAN-BR-01）。
+      x-lifepipe-requirements: [PAN-UC-05, PAN-BR-01, PAN-BR-23]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryLocationCreate'
+      responses:
+        '201':
+          description: 登録した保管場所
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryLocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /pantry/locations/{location_id}:
+    parameters:
+      - $ref: '#/components/parameters/PantryLocationId'
+    get:
+      operationId: pantryGetLocation
+      tags: [pantry]
+      summary: 保管場所を取得する
+      x-lifepipe-requirements: [PAN-UC-05]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 保管場所
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryLocation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: pantryUpdateLocation
+      tags: [pantry]
+      summary: 保管場所を更新する
+      description: 名前の重複は 409（PAN-BR-01）。
+      x-lifepipe-requirements: [PAN-UC-05, PAN-BR-01]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryLocationUpdate'
+      responses:
+        '200':
+          description: 更新した保管場所
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryLocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: pantryDeleteLocation
+      tags: [pantry]
+      summary: 保管場所を削除する
+      description: 在庫エントリや商品から参照されている場所は削除できない（409）。
+      x-lifepipe-requirements: [PAN-UC-05]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /pantry/stock:
+    get:
+      operationId: pantryListStock
+      tags: [pantry]
+      summary: 商品ごとの在庫の要約を一覧する
+      description: 有効な商品ごとに在庫数量・開封済み数量・次の期限日・最低在庫の判定を返す（PAN-BR-03、PAN-BR-08、PAN-BR-19）。
+      x-lifepipe-requirements: [PAN-UC-10, PAN-BR-03, PAN-BR-08, PAN-BR-19]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: location_id
+          in: query
+          description: この保管場所に在庫エントリを持つ商品だけを返す
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PantryProductGroupIdQuery'
+        - name: below_min_stock
+          in: query
+          description: true なら最低在庫を下回った商品だけ、false なら下回っていない商品だけ
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: 在庫の要約の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryStockOverviewPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /pantry/stock/due:
+    get:
+      operationId: pantryListDueStock
+      tags: [pantry]
+      summary: 期限が近い・期限超過・期限切れの在庫を取得する
+      description: |
+        有効な商品の在庫エントリ単位で、期限日の昇順に返す（PAN-BR-08）。期限なしのエントリは含めない（PAN-BR-05）。
+        状態は PAN-BR-07 で判定する。best_before の期限超過は overdue（早めに使う候補）、
+        expiration の期限超過は expired（廃棄の候補）。get_morning_briefing が使う。
+      x-lifepipe-requirements: [PAN-UC-11, PAN-BR-03, PAN-BR-04, PAN-BR-05, PAN-BR-07, PAN-BR-08]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: within_days
+          in: query
+          description: due_soon とみなす日数。省略時は設定の due_soon_days（PAN-BR-08）
+          schema:
+            type: integer
+            minimum: 0
+        - name: status
+          in: query
+          description: 絞り込む状態。複数指定可。省略時は due_soon・overdue・expired のすべて
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/PantryDueFilterStatus'
+        - name: location_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 期限の近い在庫エントリの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryDueStockEntryPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /pantry/stock/missing:
+    get:
+      operationId: pantryListMissingStock
+      tags: [pantry]
+      summary: 最低在庫を下回った商品と不足量を取得する
+      description: |
+        min_stock_amount が 0 より大きい有効な商品のうち、判定用の在庫数量が最低在庫数を下回るものを返す。
+        不足量は在庫単位と購入単位の両方で返す（PAN-BR-19）。prepare_outing が使う。
+      x-lifepipe-requirements: [PAN-UC-12, PAN-BR-03, PAN-BR-19, PAN-BR-21]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: not_on_shopping_list
+          in: query
+          description: true なら、既定の買い物リストの未購入の項目で不足量を満たしていない商品だけを返す（PAN-BR-21 の必要量が 0 より大きいもの）
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 最低在庫を下回った商品の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryMissingProductPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /pantry/stock-entries:
+    get:
+      operationId: pantryListStockEntries
+      tags: [pantry]
+      summary: 在庫エントリを一覧する
+      x-lifepipe-requirements: [PAN-UC-10]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: product_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: location_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: opened
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: 在庫エントリの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryStockEntryPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /pantry/stock-entries/{stock_entry_id}:
+    parameters:
+      - $ref: '#/components/parameters/PantryStockEntryId'
+    get:
+      operationId: pantryGetStockEntry
+      tags: [pantry]
+      summary: 在庫エントリを取得する
+      x-lifepipe-requirements: [PAN-UC-10]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 在庫エントリ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryStockEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: pantryUpdateStockEntry
+      tags: [pantry]
+      summary: 在庫エントリを直接編集する
+      description: 期限日・保管場所・数量・メモを変える。履歴は type=stock_edit で記録する（PAN-BR-28）。
+      x-lifepipe-requirements: [PAN-UC-22, PAN-BR-02, PAN-BR-28]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryStockEntryUpdate'
+      responses:
+        '200':
+          description: 在庫の変更結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryStockOperationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/stock-transactions:
+    get:
+      operationId: pantryListStockTransactions
+      tags: [pantry]
+      summary: 在庫の増減の履歴を取得する
+      description: 作成日時の降順に返す。廃棄の件数・数量は type=consume かつ spoiled=true で集計できる（PAN-BR-15）。
+      x-lifepipe-requirements: [PAN-UC-18, PAN-BR-15, PAN-BR-28]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: product_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/PantryStockTransactionType'
+        - name: spoiled
+          in: query
+          schema:
+            type: boolean
+        - name: from
+          in: query
+          description: この日時以降（含む）の履歴
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: この日時より前（含まない）の履歴
+          schema:
+            type: string
+            format: date-time
+        - name: user_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 履歴の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryStockTransactionPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /pantry/stock-transactions/{correlation_id}/undo:
+    parameters:
+      - name: correlation_id
+        in: path
+        required: true
+        description: 取り消す操作の correlation_id
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: pantryUndoStockTransactions
+      tags: [pantry]
+      summary: 在庫の増減を取り消す
+      description: |
+        correlation_id 単位で在庫エントリを操作前の状態に戻し、履歴の undone を true にする。
+        その後に同じ在庫エントリへ別の操作があれば 409。取り消し済みも 409（PAN-BR-30）。
+      x-lifepipe-requirements: [PAN-UC-23, PAN-BR-30]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 取り消し後の状態
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryStockOperationResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /pantry/purchases:
+    post:
+      operationId: pantryIngestPurchases
+      tags: [pantry]
+      summary: 購入報告をまとめて在庫に加え、買い物リストを消し込む
+      description: |
+        ingest_purchase 用。品目ごとに PAN-BR-16 の購入を行い、対象の買い物リスト（既定は既定のリスト）の
+        同じ商品の未購入の項目を作成日時の古い順に消し込む（PAN-BR-25）。
+        name は正規化した完全一致で照合し、0 件または複数件に一致した品目は登録せず unmatched_items に入れる。
+        他の品目の登録は続ける。各品目の在庫変更は PAN-BR-28 に従う。
+      x-lifepipe-requirements: [PAN-UC-16, PAN-BR-01, PAN-BR-06, PAN-BR-10, PAN-BR-16, PAN-BR-17, PAN-BR-25, PAN-BR-28]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryIngestPurchaseRequest'
+      responses:
+        '201':
+          description: 登録した在庫と消し込みの結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryIngestPurchaseResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/shopping-lists:
+    get:
+      operationId: pantryListShoppingLists
+      tags: [pantry]
+      summary: 買い物リストを一覧する
+      description: MVP では既定のリスト 1 件を探すために使う。is_default で絞り込める（PAN-BR-26）。
+      x-lifepipe-requirements: [PAN-UC-14, PAN-UC-25, PAN-BR-26]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: is_default
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: 買い物リストの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingListPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: pantryCreateShoppingList
+      tags: [pantry]
+      summary: 買い物リストを作成する
+      description: リスト名は世帯内で一意。重複は 409（PAN-BR-01）。作成したリストは既定にならない。
+      x-lifepipe-requirements: [PAN-UC-25, PAN-BR-01]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryShoppingListCreate'
+      responses:
+        '201':
+          description: 作成した買い物リスト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /pantry/shopping-lists/{shopping_list_id}:
+    parameters:
+      - $ref: '#/components/parameters/PantryShoppingListId'
+    get:
+      operationId: pantryGetShoppingList
+      tags: [pantry]
+      summary: 買い物リストを取得する
+      x-lifepipe-requirements: [PAN-UC-14, PAN-UC-25]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 買い物リスト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: pantryUpdateShoppingList
+      tags: [pantry]
+      summary: 買い物リストの名前・メモを更新する
+      description: 既定のリストも名前を変更できる（PAN-BR-26）。名前の重複は 409（PAN-BR-01）。
+      x-lifepipe-requirements: [PAN-UC-25, PAN-BR-01, PAN-BR-26]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryShoppingListUpdate'
+      responses:
+        '200':
+          description: 更新した買い物リスト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: pantryDeleteShoppingList
+      tags: [pantry]
+      summary: 買い物リストを削除する
+      description: 既定のリストは削除できない（409、PAN-BR-26）。リストの項目もあわせて削除する。
+      x-lifepipe-requirements: [PAN-UC-25, PAN-BR-26]
+      x-lifepipe-priority: later
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /pantry/shopping-lists/{shopping_list_id}/items:
+    parameters:
+      - $ref: '#/components/parameters/PantryShoppingListId'
+    get:
+      operationId: pantryListShoppingListItems
+      tags: [pantry]
+      summary: 買い物リストの項目を一覧する
+      description: |
+        既定は作成日時の昇順。sort=product_group は商品グループの sort_order 順に並べる（後回しの機能、PAN-UC-26）。
+        数量は保存値のまま返し、整数への切り上げはクライアント側で行う（PAN-BR-22）。
+      x-lifepipe-requirements: [PAN-UC-14, PAN-UC-26, PAN-BR-22]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: done
+          in: query
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/PantryProductGroupIdQuery'
+        - name: sort
+          in: query
+          schema:
+            $ref: '#/components/schemas/PantryShoppingListItemSort'
+      responses:
+        '200':
+          description: 項目の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingListItemPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: pantryCreateShoppingListItem
+      tags: [pantry]
+      summary: 買い物リストに項目を追加する
+      description: |
+        商品を参照する項目か、自由記述の項目（product_id なし、note 必須）を追加する（PAN-BR-27）。
+        product_id があるときは quantity_unit_id が必須で、その商品で換算できる単位に限る（422、PAN-BR-10）。
+        origin は manual になる。
+      x-lifepipe-requirements: [PAN-UC-14, PAN-BR-02, PAN-BR-10, PAN-BR-27]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryShoppingListItemCreate'
+      responses:
+        '201':
+          description: 追加した項目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingListItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/shopping-lists/{shopping_list_id}/items/{item_id}:
+    parameters:
+      - $ref: '#/components/parameters/PantryShoppingListId'
+      - $ref: '#/components/parameters/PantryShoppingListItemId'
+    get:
+      operationId: pantryGetShoppingListItem
+      tags: [pantry]
+      summary: 買い物リストの項目を取得する
+      x-lifepipe-requirements: [PAN-UC-14]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 項目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingListItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: pantryUpdateShoppingListItem
+      tags: [pantry]
+      summary: 買い物リストの項目を更新する
+      description: |
+        送った項目だけを更新する。done の変更はここでは在庫を変えない（PAN-BR-24）。
+        在庫へ登録しながら消し込むには done 操作を使う。product_id・note・quantity_unit_id の組み合わせは作成時と同じ規則（PAN-BR-27）。
+      x-lifepipe-requirements: [PAN-UC-14, PAN-BR-10, PAN-BR-24, PAN-BR-27]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryShoppingListItemUpdate'
+      responses:
+        '200':
+          description: 更新した項目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingListItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: pantryDeleteShoppingListItem
+      tags: [pantry]
+      summary: 買い物リストの項目を削除する
+      x-lifepipe-requirements: [PAN-UC-14]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /pantry/shopping-lists/{shopping_list_id}/items/{item_id}/done:
+    parameters:
+      - $ref: '#/components/parameters/PantryShoppingListId'
+      - $ref: '#/components/parameters/PantryShoppingListItemId'
+    post:
+      operationId: pantryCompleteShoppingListItem
+      tags: [pantry]
+      summary: 買い物リストの項目を購入済みにする
+      description: |
+        done を true、done_at を現在日時にする。add_to_stock が true なら項目の数量・単位で PAN-BR-16 の購入を行う（PAN-BR-24）。
+        自由記述の項目は在庫と連動しない（PAN-BR-27）。
+      x-lifepipe-requirements: [PAN-UC-15, PAN-BR-06, PAN-BR-16, PAN-BR-24, PAN-BR-27, PAN-BR-28]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryShoppingListItemDoneRequest'
+      responses:
+        '200':
+          description: 消し込んだ項目と在庫登録の結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingListItemDoneResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /pantry/shopping-lists/{shopping_list_id}/add-missing-products:
+    parameters:
+      - $ref: '#/components/parameters/PantryShoppingListId'
+    post:
+      operationId: pantryAddMissingProductsToShoppingList
+      tags: [pantry]
+      summary: 最低在庫を下回った商品を買い物リストに追加する
+      description: |
+        設定に関係なく、下回っている有効な全商品を対象にする（PAN-BR-20）。
+        必要量 = 不足量 - リストの未購入の同じ商品の数量。0 以下なら何もせず、正なら既存の未購入の項目に加算するか、
+        購入単位で新しい項目（origin=below_min_stock）を作る（PAN-BR-21）。
+        設定による自動追加（auto_add_below_min_stock）は消費・開封・棚卸しの結果に含めて返す。
+      x-lifepipe-requirements: [PAN-UC-13, PAN-BR-19, PAN-BR-20, PAN-BR-21]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 追加・更新した項目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingListChangeResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /pantry/shopping-lists/{shopping_list_id}/add-overdue-products:
+    parameters:
+      - $ref: '#/components/parameters/PantryShoppingListId'
+    post:
+      operationId: pantryAddOverdueProductsToShoppingList
+      tags: [pantry]
+      summary: 期限超過・期限切れの在庫を持つ商品を買い物リストに追加する
+      description: 有効な商品のうち、指定した状態（PAN-BR-07）の在庫エントリを持つ商品を origin=overdue または expired で追加する。
+      x-lifepipe-requirements: [PAN-UC-24, PAN-BR-04, PAN-BR-07]
+      x-lifepipe-priority: later
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryAddOverdueProductsRequest'
+      responses:
+        '200':
+          description: 追加・更新した項目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingListChangeResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /pantry/shopping-lists/{shopping_list_id}/clear:
+    parameters:
+      - $ref: '#/components/parameters/PantryShoppingListId'
+    post:
+      operationId: pantryClearShoppingList
+      tags: [pantry]
+      summary: 買い物リストの項目を一括削除する
+      description: done_only が true（既定）なら購入済みの項目だけを削除する。
+      x-lifepipe-requirements: [PAN-UC-17]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantryShoppingListClearRequest'
+      responses:
+        '200':
+          description: 削除した件数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantryShoppingListClearResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /pantry/settings:
+    get:
+      operationId: pantryGetSettings
+      tags: [pantry]
+      summary: 世帯の在庫設定を取得する
+      x-lifepipe-requirements: [PAN-UC-19, PAN-UC-13, PAN-BR-07, PAN-BR-20]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 在庫設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantrySettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      operationId: pantryUpdateSettings
+      tags: [pantry]
+      summary: 世帯の在庫設定を更新する
+      description: due_soon_days は 0 以上の整数（PAN-BR-07）。auto_add_below_min_stock で自動追加を切り替える（PAN-BR-20）。
+      x-lifepipe-requirements: [PAN-UC-19, PAN-UC-13, PAN-BR-07, PAN-BR-20]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PantrySettingsUpdate'
+      responses:
+        '200':
+          description: 更新した在庫設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PantrySettings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  parameters:
+    PantryProductId:
+      name: product_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PantryProductGroupId:
+      name: product_group_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PantryProductGroupIdQuery:
+      name: product_group_id
+      in: query
+      description: 商品グループで絞り込む
+      schema:
+        type: string
+        format: uuid
+    PantryQuantityUnitId:
+      name: quantity_unit_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PantryQuantityUnitConversionId:
+      name: conversion_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PantryLocationId:
+      name: location_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PantryStockEntryId:
+      name: stock_entry_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PantryShoppingListId:
+      name: shopping_list_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PantryShoppingListItemId:
+      name: item_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    # ---- enums ----
+    PantryDueDateType:
+      type: string
+      description: best_before は賞味期限（超過しても消費できる）、expiration は消費期限（超過は廃棄の候補）（PAN-BR-04）
+      enum: [best_before, expiration]
+    PantryDueStatus:
+      type: string
+      description: 期限の状態（PAN-BR-07）
+      enum: [ok, due_soon, overdue, expired]
+    PantryDueFilterStatus:
+      type: string
+      description: 期限の近い在庫の取得で絞り込む状態（PAN-BR-08）
+      enum: [due_soon, overdue, expired]
+    PantryOverdueStatus:
+      type: string
+      enum: [overdue, expired]
+    PantryStockTransactionType:
+      type: string
+      enum: [purchase, consume, open, transfer_from, transfer_to, inventory_correction, stock_edit]
+    PantryStockTransactionSource:
+      type: string
+      enum: [manual, shopping_list, ingest_purchase, auto]
+    PantryShoppingListItemOrigin:
+      type: string
+      enum: [manual, below_min_stock, overdue, expired]
+    PantryShoppingListItemSort:
+      type: string
+      description: product_group は後回しの機能（PAN-UC-26）
+      enum: [created_at, product_group]
+      default: created_at
+    PantryWarningCode:
+      type: string
+      description: |
+        due_date_today_or_past: 期限日が今日以前（PAN-BR-06）。
+        due_date_earlier_than_existing: 既存の在庫エントリの最も早い期限日より前（PAN-BR-17）。
+      enum: [due_date_today_or_past, due_date_earlier_than_existing]
+    PantryUnmatchedReason:
+      type: string
+      enum: [no_match, multiple_matches]
+
+    # ---- common value types ----
+    PantryMoney:
+      type: string
+      description: 10 進数の金額
+      pattern: '^-?\d+(\.\d{1,4})?$'
+      example: '198.00'
+    PantryCurrency:
+      type: string
+      description: ISO 4217 の通貨コード
+      pattern: '^[A-Z]{3}$'
+      example: JPY
+    PantryWarning:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          $ref: '#/components/schemas/PantryWarningCode'
+        message:
+          type: string
+    PantryPriceInput:
+      type: object
+      description: unit_price（購入した単位あたり）か total_price のどちらか一方と currency を送る。両方は 422（PAN-BR-16）
+      properties:
+        unit_price:
+          $ref: '#/components/schemas/PantryMoney'
+        total_price:
+          $ref: '#/components/schemas/PantryMoney'
+        currency:
+          $ref: '#/components/schemas/PantryCurrency'
+
+    # ---- Product ----
+    PantryProduct:
+      type: object
+      required:
+        - id
+        - name
+        - default_location_id
+        - stock_quantity_unit_id
+        - purchase_quantity_unit_id
+        - consume_quantity_unit_id
+        - min_stock_amount
+        - due_date_type
+        - treat_opened_as_out_of_stock
+        - can_be_opened
+        - quick_consume_amount
+        - active
+        - stock_summary
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          description: 世帯内で一意（PAN-BR-01）
+        description:
+          type: string
+          nullable: true
+        product_group_id:
+          type: string
+          format: uuid
+          nullable: true
+        default_location_id:
+          type: string
+          format: uuid
+        default_consume_location_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 消費時に優先する保管場所（PAN-BR-11）
+        stock_quantity_unit_id:
+          type: string
+          format: uuid
+          description: 在庫数量の基準単位
+        purchase_quantity_unit_id:
+          type: string
+          format: uuid
+        consume_quantity_unit_id:
+          type: string
+          format: uuid
+        min_stock_amount:
+          type: number
+          format: double
+          minimum: 0
+          description: 最低在庫数（在庫単位、小数第 4 位まで、PAN-BR-02）。0 は管理しない
+        due_date_type:
+          $ref: '#/components/schemas/PantryDueDateType'
+        default_due_days:
+          type: integer
+          minimum: -1
+          nullable: true
+          description: 購入日から期限までの既定日数。-1 は期限なし。null は購入時に期限の入力が必要（PAN-BR-06）
+        default_due_days_after_open:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: 開封後の期限日数（PAN-BR-14）
+        default_due_days_after_freezing:
+          type: integer
+          minimum: -1
+          nullable: true
+          description: 冷凍庫へ移したときの期限日数。-1 は期限なし、0 は変えない（PAN-BR-23）
+        default_due_days_after_thawing:
+          type: integer
+          minimum: -1
+          nullable: true
+          description: 冷凍庫から出したときの期限日数。-1 は期限なし、0 は変えない（PAN-BR-23）
+        treat_opened_as_out_of_stock:
+          type: boolean
+          description: 開封済みの在庫を最低在庫の判定で在庫なしと数えるか（PAN-BR-19）
+        can_be_opened:
+          type: boolean
+        quick_consume_amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: ワンタップ消費の数量（消費単位）
+        active:
+          type: boolean
+          description: false は一覧・期限・最低在庫・自動追加の対象外（PAN-BR-03）
+        stock_summary:
+          $ref: '#/components/schemas/PantryStockSummary'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PantryProductCreate:
+      type: object
+      required: [name, default_location_id, stock_quantity_unit_id]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          nullable: true
+        product_group_id:
+          type: string
+          format: uuid
+          nullable: true
+        default_location_id:
+          type: string
+          format: uuid
+        default_consume_location_id:
+          type: string
+          format: uuid
+          nullable: true
+        stock_quantity_unit_id:
+          type: string
+          format: uuid
+        purchase_quantity_unit_id:
+          type: string
+          format: uuid
+          description: 省略すると在庫単位
+        consume_quantity_unit_id:
+          type: string
+          format: uuid
+          description: 省略すると在庫単位
+        min_stock_amount:
+          type: number
+          format: double
+          minimum: 0
+          default: 0
+        due_date_type:
+          $ref: '#/components/schemas/PantryDueDateType'
+        default_due_days:
+          type: integer
+          minimum: -1
+          nullable: true
+        default_due_days_after_open:
+          type: integer
+          minimum: 0
+          nullable: true
+        default_due_days_after_freezing:
+          type: integer
+          minimum: -1
+          nullable: true
+        default_due_days_after_thawing:
+          type: integer
+          minimum: -1
+          nullable: true
+        treat_opened_as_out_of_stock:
+          type: boolean
+          default: true
+        can_be_opened:
+          type: boolean
+          default: true
+        quick_consume_amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          default: 1
+        active:
+          type: boolean
+          default: true
+    PantryProductUpdate:
+      type: object
+      description: 送った項目だけを更新する。stock_quantity_unit_id の変更は PAN-BR-18
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          nullable: true
+        product_group_id:
+          type: string
+          format: uuid
+          nullable: true
+        default_location_id:
+          type: string
+          format: uuid
+        default_consume_location_id:
+          type: string
+          format: uuid
+          nullable: true
+        stock_quantity_unit_id:
+          type: string
+          format: uuid
+        purchase_quantity_unit_id:
+          type: string
+          format: uuid
+        consume_quantity_unit_id:
+          type: string
+          format: uuid
+        min_stock_amount:
+          type: number
+          format: double
+          minimum: 0
+        due_date_type:
+          $ref: '#/components/schemas/PantryDueDateType'
+        default_due_days:
+          type: integer
+          minimum: -1
+          nullable: true
+        default_due_days_after_open:
+          type: integer
+          minimum: 0
+          nullable: true
+        default_due_days_after_freezing:
+          type: integer
+          minimum: -1
+          nullable: true
+        default_due_days_after_thawing:
+          type: integer
+          minimum: -1
+          nullable: true
+        treat_opened_as_out_of_stock:
+          type: boolean
+        can_be_opened:
+          type: boolean
+        quick_consume_amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        active:
+          type: boolean
+    PantryProductPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryProduct'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+    PantryProductMergeRequest:
+      type: object
+      required: [target_product_id]
+      properties:
+        target_product_id:
+          type: string
+          format: uuid
+          description: 統合先の商品。パスの商品とは別の商品
+    PantryProductQuantityUnit:
+      type: object
+      required: [quantity_unit, factor_to_stock_unit, is_stock_unit, is_purchase_unit, is_consume_unit]
+      properties:
+        quantity_unit:
+          $ref: '#/components/schemas/PantryQuantityUnit'
+        factor_to_stock_unit:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: この単位 1 が在庫単位の何単位か（PAN-BR-10 で解決した値）
+        is_stock_unit:
+          type: boolean
+        is_purchase_unit:
+          type: boolean
+        is_consume_unit:
+          type: boolean
+    PantryProductQuantityUnitPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryProductQuantityUnit'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- ProductGroup ----
+    PantryProductGroup:
+      type: object
+      required: [id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          description: 世帯内で一意（PAN-BR-01）
+        sort_order:
+          type: integer
+          nullable: true
+          description: 買い物リストでの並び順
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PantryProductGroupCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        sort_order:
+          type: integer
+          nullable: true
+    PantryProductGroupUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        sort_order:
+          type: integer
+          nullable: true
+    PantryProductGroupPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryProductGroup'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- QuantityUnit ----
+    PantryQuantityUnit:
+      type: object
+      required: [id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          description: 世帯内で一意（PAN-BR-01）
+        name_plural:
+          type: string
+          nullable: true
+          description: 未設定なら name を使う
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PantryQuantityUnitCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        name_plural:
+          type: string
+          nullable: true
+    PantryQuantityUnitUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        name_plural:
+          type: string
+          nullable: true
+    PantryQuantityUnitPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryQuantityUnit'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- QuantityUnitConversion ----
+    PantryQuantityUnitConversion:
+      type: object
+      required: [id, from_quantity_unit_id, to_quantity_unit_id, factor, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        from_quantity_unit_id:
+          type: string
+          format: uuid
+        to_quantity_unit_id:
+          type: string
+          format: uuid
+          description: from_quantity_unit_id と異なる（PAN-BR-09）
+        factor:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: from 1 単位が to の何単位か
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 指定するとその商品専用。null は全商品共通
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PantryQuantityUnitConversionCreate:
+      type: object
+      required: [from_quantity_unit_id, to_quantity_unit_id, factor]
+      properties:
+        from_quantity_unit_id:
+          type: string
+          format: uuid
+        to_quantity_unit_id:
+          type: string
+          format: uuid
+        factor:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+    PantryQuantityUnitConversionUpdate:
+      type: object
+      properties:
+        from_quantity_unit_id:
+          type: string
+          format: uuid
+        to_quantity_unit_id:
+          type: string
+          format: uuid
+        factor:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+    PantryQuantityUnitConversionPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryQuantityUnitConversion'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- Location ----
+    PantryLocation:
+      type: object
+      required: [id, name, is_freezer, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          description: 世帯内で一意（PAN-BR-01）
+        description:
+          type: string
+          nullable: true
+        is_freezer:
+          type: boolean
+          description: 冷凍庫か（PAN-BR-23）
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PantryLocationCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          nullable: true
+        is_freezer:
+          type: boolean
+          default: false
+    PantryLocationUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          nullable: true
+        is_freezer:
+          type: boolean
+    PantryLocationPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryLocation'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- Stock ----
+    PantryStockEntry:
+      type: object
+      required: [id, product_id, location_id, amount, purchased_date, opened, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        location_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: 残数量（在庫単位、小数第 4 位まで、PAN-BR-02）。0 になったエントリは削除する
+        due_date:
+          type: string
+          format: date
+          nullable: true
+          description: null は期限なし（PAN-BR-05）
+        purchased_date:
+          type: string
+          format: date
+        opened:
+          type: boolean
+        opened_date:
+          type: string
+          format: date
+          nullable: true
+          description: opened が true のとき必ず値を持つ
+        unit_price:
+          allOf:
+            - $ref: '#/components/schemas/PantryMoney'
+          type: string
+          nullable: true
+          description: 在庫単位あたりの購入価格
+        currency:
+          allOf:
+            - $ref: '#/components/schemas/PantryCurrency'
+          type: string
+          nullable: true
+          description: unit_price の通貨。unit_price があるとき必ず値を持つ
+        note:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          description: 先入れ先出しの基準（PAN-BR-11）
+        updated_at:
+          type: string
+          format: date-time
+    PantryStockEntryUpdate:
+      type: object
+      description: 送った項目だけを更新する（後回し、PAN-UC-22）
+      properties:
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        location_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: 在庫単位
+        note:
+          type: string
+          nullable: true
+    PantryStockEntryPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryStockEntry'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+    PantryStockSummary:
+      type: object
+      description: 商品の在庫の要約（数量は在庫単位）
+      required: [amount, opened_amount, below_min_stock, missing_amount]
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          description: 在庫エントリの数量の合計
+        opened_amount:
+          type: number
+          format: double
+          minimum: 0
+          description: 開封済みのエントリの数量の合計
+        next_due_date:
+          type: string
+          format: date
+          nullable: true
+          description: 在庫エントリのうち最も早い期限日。期限のあるエントリがなければ null（PAN-BR-08）
+        next_due_status:
+          allOf:
+            - $ref: '#/components/schemas/PantryDueStatus'
+          type: string
+          nullable: true
+          description: next_due_date の期限の状態（PAN-BR-07）
+        below_min_stock:
+          type: boolean
+          description: 最低在庫を下回っているか（PAN-BR-19）
+        missing_amount:
+          type: number
+          format: double
+          minimum: 0
+          description: 不足量。下回っていなければ 0（PAN-BR-19）
+    PantryProductStock:
+      type: object
+      required: [product_id, stock_quantity_unit_id, summary, entries]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        stock_quantity_unit_id:
+          type: string
+          format: uuid
+        summary:
+          $ref: '#/components/schemas/PantryStockSummary'
+        entries:
+          type: array
+          description: PAN-BR-11 の消費順
+          items:
+            $ref: '#/components/schemas/PantryStockEntry'
+    PantryStockOverview:
+      type: object
+      required: [product_id, product_name, stock_quantity_unit_id, min_stock_amount, due_date_type, summary]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        product_name:
+          type: string
+        product_group_id:
+          type: string
+          format: uuid
+          nullable: true
+        stock_quantity_unit_id:
+          type: string
+          format: uuid
+        min_stock_amount:
+          type: number
+          format: double
+          minimum: 0
+        due_date_type:
+          $ref: '#/components/schemas/PantryDueDateType'
+        summary:
+          $ref: '#/components/schemas/PantryStockSummary'
+    PantryStockOverviewPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryStockOverview'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+    PantryDueStockEntry:
+      type: object
+      description: 期限の近い在庫エントリ（get_morning_briefing 用）
+      required: [stock_entry, product_name, location_name, stock_quantity_unit_id, due_date_type, due_status, days_until_due]
+      properties:
+        stock_entry:
+          $ref: '#/components/schemas/PantryStockEntry'
+        product_name:
+          type: string
+        location_name:
+          type: string
+        stock_quantity_unit_id:
+          type: string
+          format: uuid
+        due_date_type:
+          $ref: '#/components/schemas/PantryDueDateType'
+        due_status:
+          $ref: '#/components/schemas/PantryDueFilterStatus'
+        days_until_due:
+          type: integer
+          description: due_date - 今日（世帯のタイムゾーン）。負なら期限を過ぎている（PAN-BR-07）
+    PantryDueStockEntryPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryDueStockEntry'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+    PantryMissingProduct:
+      type: object
+      required:
+        - product_id
+        - product_name
+        - min_stock_amount
+        - stock_amount
+        - missing_amount
+        - stock_quantity_unit_id
+        - missing_amount_in_purchase_unit
+        - purchase_quantity_unit_id
+        - amount_on_default_shopping_list
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        product_name:
+          type: string
+        product_group_id:
+          type: string
+          format: uuid
+          nullable: true
+        min_stock_amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        stock_amount:
+          type: number
+          format: double
+          minimum: 0
+          description: 判定用の在庫数量（treat_opened_as_out_of_stock を反映、在庫単位、PAN-BR-19）
+        missing_amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: 不足量（在庫単位）
+        stock_quantity_unit_id:
+          type: string
+          format: uuid
+        missing_amount_in_purchase_unit:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: 不足量（購入単位、切り上げない、PAN-BR-22）
+        purchase_quantity_unit_id:
+          type: string
+          format: uuid
+        amount_on_default_shopping_list:
+          type: number
+          format: double
+          minimum: 0
+          description: 既定の買い物リストにある未購入の同じ商品の数量の合計（在庫単位、PAN-BR-21）
+    PantryMissingProductPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryMissingProduct'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- StockTransaction ----
+    PantryStockTransaction:
+      type: object
+      required:
+        - id
+        - correlation_id
+        - type
+        - product_id
+        - stock_entry_id
+        - location_id
+        - amount
+        - spoiled
+        - source
+        - user_id
+        - undone
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        correlation_id:
+          type: string
+          format: uuid
+          description: 1 回の操作で作られた履歴をまとめる ID（PAN-BR-12）
+        type:
+          $ref: '#/components/schemas/PantryStockTransactionType'
+        product_id:
+          type: string
+          format: uuid
+        stock_entry_id:
+          type: string
+          format: uuid
+          description: 対象の在庫エントリ（削除済みでも残る）
+        location_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          description: 増減量（在庫単位）。増加は正、減少は負
+        spoiled:
+          type: boolean
+          description: 廃棄による消費か。type が consume のときだけ true になりうる（PAN-BR-15）
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        unit_price:
+          allOf:
+            - $ref: '#/components/schemas/PantryMoney'
+          type: string
+          nullable: true
+        currency:
+          allOf:
+            - $ref: '#/components/schemas/PantryCurrency'
+          type: string
+          nullable: true
+        source:
+          $ref: '#/components/schemas/PantryStockTransactionSource'
+        user_id:
+          type: string
+          description: 操作した利用者（ゲートウェイが渡す ID）
+        undone:
+          type: boolean
+          description: 取り消し済みか（後回し、PAN-BR-30）
+        undone_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    PantryStockTransactionPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryStockTransaction'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- stock operations ----
+    PantryPurchaseRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: 購入数量（quantity_unit_id の単位）
+        quantity_unit_id:
+          type: string
+          format: uuid
+          description: 省略すると商品の購入単位。その商品で換算できる単位に限る（PAN-BR-10）
+        due_date:
+          type: string
+          format: date
+          description: 省略すると PAN-BR-06 で決める
+        no_due_date:
+          type: boolean
+          default: false
+          description: true なら期限なし（due_date を null）で登録する。due_date と同時には指定できない
+        location_id:
+          type: string
+          format: uuid
+          description: 省略すると商品の既定の保管場所（PAN-BR-16）
+        purchased_date:
+          type: string
+          format: date
+          description: 省略すると今日
+        price:
+          $ref: '#/components/schemas/PantryPriceInput'
+        note:
+          type: string
+          nullable: true
+    PantryPurchaseResult:
+      type: object
+      required: [correlation_id, stock_entry, transactions, warnings]
+      properties:
+        correlation_id:
+          type: string
+          format: uuid
+        stock_entry:
+          $ref: '#/components/schemas/PantryStockEntry'
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryStockTransaction'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryWarning'
+    PantryConsumeRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        quantity_unit_id:
+          type: string
+          format: uuid
+          description: 省略すると商品の消費単位
+        location_id:
+          type: string
+          format: uuid
+          description: 指定するとその場所の在庫だけを対象にする（PAN-BR-11）
+        stock_entry_id:
+          type: string
+          format: uuid
+          description: 指定するとそのエントリだけから引く
+        spoiled:
+          type: boolean
+          default: false
+          description: true なら廃棄（PAN-BR-15）
+    PantryOpenRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        quantity_unit_id:
+          type: string
+          format: uuid
+          description: 省略すると商品の消費単位
+        location_id:
+          type: string
+          format: uuid
+        stock_entry_id:
+          type: string
+          format: uuid
+          description: 未開封のエントリに限る
+    PantryTransferRequest:
+      type: object
+      required: [amount, from_location_id, to_location_id]
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        quantity_unit_id:
+          type: string
+          format: uuid
+          description: 省略すると在庫単位
+        from_location_id:
+          type: string
+          format: uuid
+        to_location_id:
+          type: string
+          format: uuid
+          description: from_location_id と異なる
+        stock_entry_id:
+          type: string
+          format: uuid
+          description: 指定するとそのエントリだけを移す。from_location_id にあるエントリに限る
+    PantryInventoryRequest:
+      type: object
+      required: [new_amount]
+      properties:
+        new_amount:
+          type: number
+          format: double
+          minimum: 0
+          description: 実数（quantity_unit_id の単位）
+        quantity_unit_id:
+          type: string
+          format: uuid
+          description: 省略すると在庫単位
+        due_date:
+          type: string
+          format: date
+          nullable: true
+          description: 増える場合の新しいエントリの期限日。省略すると PAN-BR-06 で決める
+        location_id:
+          type: string
+          format: uuid
+          description: 増える場合の新しいエントリの保管場所。省略すると商品の既定の保管場所
+    PantryStockOperationResult:
+      type: object
+      required: [correlation_id, transactions, stock_entries, deleted_stock_entry_ids, shopping_list_items]
+      properties:
+        correlation_id:
+          type: string
+          format: uuid
+        transactions:
+          type: array
+          description: 今回記録（または取り消し）した履歴
+          items:
+            $ref: '#/components/schemas/PantryStockTransaction'
+        stock_entries:
+          type: array
+          description: 変更後の在庫エントリ（作成・分割・更新したもの）
+          items:
+            $ref: '#/components/schemas/PantryStockEntry'
+        deleted_stock_entry_ids:
+          type: array
+          description: 数量が 0 になって削除した在庫エントリ（PAN-BR-12）
+          items:
+            type: string
+            format: uuid
+        shopping_list_items:
+          type: array
+          description: 自動追加で作成・加算した既定の買い物リストの項目（PAN-BR-20、PAN-BR-21）
+          items:
+            $ref: '#/components/schemas/PantryShoppingListItem'
+    PantryIngestPurchaseItem:
+      type: object
+      description: product_id か name のどちらかで商品を指定する（PAN-BR-25）
+      required: [amount]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          description: 正規化（大文字小文字と前後の空白を区別しない）した完全一致で有効な商品名と照合する
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        quantity_unit_id:
+          type: string
+          format: uuid
+          description: 省略すると商品の購入単位
+        due_date:
+          type: string
+          format: date
+        no_due_date:
+          type: boolean
+          default: false
+        location_id:
+          type: string
+          format: uuid
+        price:
+          $ref: '#/components/schemas/PantryPriceInput'
+        note:
+          type: string
+          nullable: true
+    PantryIngestPurchaseRequest:
+      type: object
+      required: [items]
+      properties:
+        shopping_list_id:
+          type: string
+          format: uuid
+          description: 消し込む買い物リスト。省略すると既定のリスト
+        purchased_date:
+          type: string
+          format: date
+          description: 全品目の購入日。省略すると今日
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PantryIngestPurchaseItem'
+    PantryIngestPurchaseItemResult:
+      type: object
+      required: [index, product_id, stock_entry, warnings]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: リクエストの items での位置
+        product_id:
+          type: string
+          format: uuid
+        stock_entry:
+          $ref: '#/components/schemas/PantryStockEntry'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryWarning'
+    PantryProductCandidate:
+      type: object
+      required: [product_id, name]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    PantryUnmatchedPurchaseItem:
+      type: object
+      required: [index, reason, candidates]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: リクエストの items での位置
+        name:
+          type: string
+          nullable: true
+        reason:
+          $ref: '#/components/schemas/PantryUnmatchedReason'
+        candidates:
+          type: array
+          description: 候補の商品（あれば）
+          items:
+            $ref: '#/components/schemas/PantryProductCandidate'
+    PantryIngestPurchaseResult:
+      type: object
+      required: [correlation_id, registered_items, completed_shopping_list_items, reduced_shopping_list_items, unmatched_items]
+      properties:
+        correlation_id:
+          type: string
+          format: uuid
+          description: この購入報告で記録した履歴をまとめる ID
+        registered_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryIngestPurchaseItemResult'
+        completed_shopping_list_items:
+          type: array
+          description: done=true にした項目
+          items:
+            $ref: '#/components/schemas/PantryShoppingListItem'
+        reduced_shopping_list_items:
+          type: array
+          description: 数量を減らして done=false のまま残した項目
+          items:
+            $ref: '#/components/schemas/PantryShoppingListItem'
+        unmatched_items:
+          type: array
+          description: 商品を特定できず登録しなかった品目
+          items:
+            $ref: '#/components/schemas/PantryUnmatchedPurchaseItem'
+
+    # ---- ShoppingList ----
+    PantryShoppingList:
+      type: object
+      required: [id, name, is_default, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          description: 世帯内で一意（PAN-BR-01）
+        is_default:
+          type: boolean
+          description: 既定のリストか。世帯に 1 つだけ true（PAN-BR-26）
+        note:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PantryShoppingListCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        note:
+          type: string
+          nullable: true
+    PantryShoppingListUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        note:
+          type: string
+          nullable: true
+    PantryShoppingListPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryShoppingList'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+    PantryShoppingListItem:
+      type: object
+      required: [id, shopping_list_id, amount, done, origin, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        shopping_list_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: null は自由記述の項目（PAN-BR-27）
+        note:
+          type: string
+          nullable: true
+          description: product_id が null のとき必ず値を持つ
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: 数量（小数第 4 位まで、PAN-BR-02）。表示の切り上げはクライアント側（PAN-BR-22）
+        quantity_unit_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: product_id があるときは必ず値を持つ
+        done:
+          type: boolean
+        done_at:
+          type: string
+          format: date-time
+          nullable: true
+        origin:
+          $ref: '#/components/schemas/PantryShoppingListItemOrigin'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PantryShoppingListItemCreate:
+      type: object
+      description: product_id がなければ note が必須。product_id があれば quantity_unit_id が必須（PAN-BR-27）
+      required: [amount]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        quantity_unit_id:
+          type: string
+          format: uuid
+          nullable: true
+    PantryShoppingListItemUpdate:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        quantity_unit_id:
+          type: string
+          format: uuid
+          nullable: true
+        done:
+          type: boolean
+          description: 在庫は変えない。false に戻しても在庫は戻さない（PAN-BR-24）
+    PantryShoppingListItemPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryShoppingListItem'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+    PantryShoppingListItemDoneRequest:
+      type: object
+      properties:
+        add_to_stock:
+          type: boolean
+          default: true
+          description: true なら項目の数量・単位で在庫へ登録する。自由記述の項目では無視する（PAN-BR-24、PAN-BR-27）
+        due_date:
+          type: string
+          format: date
+          description: 省略すると PAN-BR-06 で決める
+        no_due_date:
+          type: boolean
+          default: false
+        location_id:
+          type: string
+          format: uuid
+          description: 省略すると商品の既定の保管場所
+        price:
+          $ref: '#/components/schemas/PantryPriceInput'
+    PantryShoppingListItemDoneResult:
+      type: object
+      required: [item]
+      properties:
+        item:
+          $ref: '#/components/schemas/PantryShoppingListItem'
+        purchase:
+          allOf:
+            - $ref: '#/components/schemas/PantryPurchaseResult'
+          type: object
+          nullable: true
+          description: 在庫へ登録したときの結果。登録しなければ null
+    PantryAddOverdueProductsRequest:
+      type: object
+      properties:
+        status:
+          type: array
+          description: 対象にする状態。省略すると overdue と expired の両方
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PantryOverdueStatus'
+    PantryShoppingListChangeResult:
+      type: object
+      required: [created_items, updated_items]
+      properties:
+        created_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PantryShoppingListItem'
+        updated_items:
+          type: array
+          description: 数量を加算した既存の未購入の項目
+          items:
+            $ref: '#/components/schemas/PantryShoppingListItem'
+    PantryShoppingListClearRequest:
+      type: object
+      properties:
+        done_only:
+          type: boolean
+          default: true
+          description: true なら購入済みの項目だけを削除する
+    PantryShoppingListClearResult:
+      type: object
+      required: [deleted_count]
+      properties:
+        deleted_count:
+          type: integer
+          minimum: 0
+
+    # ---- Settings ----
+    PantrySettings:
+      type: object
+      required: [due_soon_days, auto_add_below_min_stock, updated_at]
+      properties:
+        due_soon_days:
+          type: integer
+          minimum: 0
+          default: 3
+          description: 期限が近いとみなす日数（PAN-BR-07）
+        auto_add_below_min_stock:
+          type: boolean
+          default: false
+          description: 最低在庫を下回ったとき既定の買い物リストへ自動追加するか（PAN-BR-20）
+        updated_at:
+          type: string
+          format: date-time
+    PantrySettingsUpdate:
+      type: object
+      properties:
+        due_soon_days:
+          type: integer
+          minimum: 0
+        auto_add_below_min_stock:
+          type: boolean
