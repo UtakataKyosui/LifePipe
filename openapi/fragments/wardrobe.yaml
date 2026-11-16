@@ -1,0 +1,2504 @@
+# wardrobe fragment
+paths:
+  /wardrobe/households/{household_id}:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeHouseholdId'
+    get:
+      operationId: wardrobeGetHousehold
+      tags: [wardrobe]
+      summary: 世帯を取得する
+      description: |
+        利用者が所属する世帯を返す。別の世帯は 404（WRD-BR-01）。
+        世帯の作成は利用開始時に行うため、この API には無い。
+      x-lifepipe-requirements: [WRD-UC-01, WRD-BR-01]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 世帯
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeHousehold'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: wardrobeUpdateHousehold
+      tags: [wardrobe]
+      summary: 世帯を更新する
+      description: 送った項目だけを更新する。別の世帯は 404（WRD-BR-01）。
+      x-lifepipe-requirements: [WRD-UC-01, WRD-BR-01]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeHouseholdUpdate'
+      responses:
+        '200':
+          description: 更新後の世帯
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeHousehold'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /wardrobe/households/{household_id}/members:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeHouseholdId'
+    get:
+      operationId: wardrobeListMembers
+      tags: [wardrobe]
+      summary: 世帯メンバーを一覧する
+      description: ログインしない家族（user_id が空）も含めて返す（WRD-UC-01）。
+      x-lifepipe-requirements: [WRD-UC-01, WRD-BR-01]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: メンバーの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeMemberPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: wardrobeCreateMember
+      tags: [wardrobe]
+      summary: 世帯メンバーを登録する
+      description: ログインしない家族は user_id を省略する（WRD-UC-01）。
+      x-lifepipe-requirements: [WRD-UC-01]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeMemberCreate'
+      responses:
+        '201':
+          description: 作成したメンバー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /wardrobe/households/{household_id}/members/{member_id}:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeHouseholdId'
+      - $ref: '#/components/parameters/WardrobeMemberId'
+    get:
+      operationId: wardrobeGetMember
+      tags: [wardrobe]
+      summary: 世帯メンバーを取得する
+      x-lifepipe-requirements: [WRD-UC-01, WRD-BR-01]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: メンバー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeMember'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: wardrobeUpdateMember
+      tags: [wardrobe]
+      summary: 世帯メンバーを更新する
+      x-lifepipe-requirements: [WRD-UC-01, WRD-BR-01]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeMemberUpdate'
+      responses:
+        '200':
+          description: 更新後のメンバー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: wardrobeDeleteMember
+      tags: [wardrobe]
+      summary: 世帯メンバーを削除する
+      description: 衣服を持つメンバーは削除できず 409 を返す（WRD-UC-01、WRD-BR-01）。
+      x-lifepipe-requirements: [WRD-UC-01, WRD-BR-01]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /wardrobe/items:
+    get:
+      operationId: wardrobeListItems
+      tags: [wardrobe]
+      summary: 衣服を一覧・検索する
+      description: |
+        利用者の世帯の衣服を返す（WRD-BR-01）。status の既定は active で、アーカイブ済みは既定の絞り込みから外れる（WRD-BR-22）。
+        要洗濯・洗濯中の一覧は `wash_status=needs_wash,in_laundry` で取る（WRD-UC-12）。
+      x-lifepipe-requirements: [WRD-UC-03, WRD-UC-12, WRD-BR-01, WRD-BR-22]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: owner_member_id
+          in: query
+          description: 持ち主で絞り込む
+          schema:
+            type: string
+            format: uuid
+        - name: category
+          in: query
+          description: 種類で絞り込む
+          schema:
+            $ref: '#/components/schemas/WardrobeCategory'
+        - name: season
+          in: query
+          description: 季節で絞り込む（seasons が空の通年の服も含む）
+          schema:
+            $ref: '#/components/schemas/WardrobeSeason'
+        - name: occasion
+          in: query
+          description: 場面で絞り込む
+          schema:
+            $ref: '#/components/schemas/WardrobeOccasion'
+        - name: wash_status
+          in: query
+          description: 洗濯ステータスで絞り込む（カンマ区切りで複数指定）
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/WardrobeWashStatus'
+        - name: status
+          in: query
+          description: 所持状態で絞り込む。既定は active
+          schema:
+            $ref: '#/components/schemas/WardrobeItemStatus'
+        - name: color
+          in: query
+          description: 色で絞り込む（colors のいずれかに一致）
+          schema:
+            type: string
+            maxLength: 50
+        - name: q
+          in: query
+          description: 名前の部分一致
+          schema:
+            type: string
+            maxLength: 200
+        - name: sort
+          in: query
+          description: 並べ替え。先頭に `-` を付けると降順
+          schema:
+            $ref: '#/components/schemas/WardrobeItemSort'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 衣服の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItemPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: wardrobeCreateItem
+      tags: [wardrobe]
+      summary: 衣服を登録する
+      description: |
+        画像は任意で、登録後に別途アップロードする（WRD-UC-02）。
+        wears_before_wash を省略すると category の既定値になる（WRD-BR-04）。
+        購入の振り分けからの登録は source=purchase と Idempotency-Key を付ける。wash_status=clean、wears_since_wash=0 で登録し、
+        同じキーの再送には 24 時間同じ結果を返す。category を判断できない品目は other で登録する（WRD-UC-14、WRD-BR-23）。
+        warmth・formality は 1〜5、min_temp ≤ max_temp でなければ 422（WRD-BR-24）。
+      x-lifepipe-requirements: [WRD-UC-02, WRD-UC-14, WRD-BR-01, WRD-BR-03, WRD-BR-04, WRD-BR-23, WRD-BR-24]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/WardrobeIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeItemCreate'
+      responses:
+        '201':
+          description: 登録した衣服（同じ Idempotency-Key の再送では最初の結果）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /wardrobe/items/{item_id}:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeItemId'
+    get:
+      operationId: wardrobeGetItem
+      tags: [wardrobe]
+      summary: 衣服の詳細を取得する
+      description: 別の世帯の衣服は 404（WRD-BR-01）。
+      x-lifepipe-requirements: [WRD-UC-04, WRD-BR-01]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 衣服
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: wardrobeUpdateItem
+      tags: [wardrobe]
+      summary: 衣服の属性を編集する
+      description: |
+        送った項目だけを更新する。回数・洗濯関係の読み取り専用項目、wash_status、status、source は変えられない。
+        wears_before_wash を 0 から 1 以上に変えたら wears_since_wash を 0 から数え直す（WRD-BR-03）。
+        warmth・formality は 1〜5、min_temp ≤ max_temp でなければ 422（WRD-BR-24）。
+      x-lifepipe-requirements: [WRD-UC-04, WRD-BR-01, WRD-BR-03, WRD-BR-04, WRD-BR-24]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeItemUpdate'
+      responses:
+        '200':
+          description: 更新後の衣服
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: wardrobeDeleteItem
+      tags: [wardrobe]
+      summary: 誤登録の衣服を削除する
+      description: 着用記録から参照されている服は 409 を返し、アーカイブを促す（WRD-UC-05、WRD-BR-22）。
+      x-lifepipe-requirements: [WRD-UC-05, WRD-BR-01, WRD-BR-22]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /wardrobe/items/{item_id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeItemId'
+    post:
+      operationId: wardrobeArchiveItem
+      tags: [wardrobe]
+      summary: 手放した衣服をアーカイブする
+      description: status=archived にし、archived_at を記録する。着用履歴と集計には残る（WRD-BR-22）。
+      x-lifepipe-requirements: [WRD-UC-05, WRD-BR-22]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: アーカイブ後の衣服
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: wardrobeUnarchiveItem
+      tags: [wardrobe]
+      summary: アーカイブした衣服を元に戻す
+      description: status=active、archived_at を空にする。洗濯ステータスと回数は保つ（WRD-BR-22）。
+      x-lifepipe-requirements: [WRD-UC-05, WRD-BR-22]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 元に戻した衣服
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wardrobe/items/{item_id}/images:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeItemId'
+    get:
+      operationId: wardrobeListItemImages
+      tags: [wardrobe]
+      summary: 衣服の画像を一覧する
+      description: 各画像に有効期限 1 時間の url を取得のたびに発行して含める。保存先のキーは返さない（WRD-BR-19）。
+      x-lifepipe-requirements: [WRD-UC-06, WRD-UC-07, WRD-BR-01, WRD-BR-19]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 画像の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItemImagePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: wardrobeUploadItemImage
+      tags: [wardrobe]
+      summary: 衣服の画像をアップロードする
+      description: |
+        jpeg・png・webp を受け付け、1枚 50MB 以下。超えたら 413、形式が違えば 415。
+        同期で元画像（kind=original）を保存し、保存できた時点で応答する。1着 10 枚までで、超えると 422（WRD-BR-18）。
+        AI・背景除去が使えない設定でも動く（WRD-BR-21）。
+      x-lifepipe-requirements: [WRD-UC-06, WRD-UC-07, WRD-BR-18, WRD-BR-19, WRD-BR-21]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WardrobeItemImageUpload'
+            encoding:
+              file:
+                contentType: image/jpeg, image/png, image/webp
+      responses:
+        '201':
+          description: 保存した元画像
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItemImage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: 画像が 50MB を超えている（WRD-BR-18）
+        '415':
+          description: jpeg・png・webp 以外の形式（WRD-BR-18）
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /wardrobe/items/{item_id}/images/{image_id}:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeItemId'
+      - $ref: '#/components/parameters/WardrobeImageId'
+    get:
+      operationId: wardrobeGetItemImage
+      tags: [wardrobe]
+      summary: 衣服の画像を取得する
+      description: 有効期限 1 時間の url を取得のたびに発行して返す（WRD-UC-07、WRD-BR-19）。
+      x-lifepipe-requirements: [WRD-UC-06, WRD-UC-07, WRD-BR-01, WRD-BR-19]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 画像
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItemImage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: wardrobeDeleteItemImage
+      tags: [wardrobe]
+      summary: 衣服の画像を削除する
+      description: 一覧に出す画像（primary）を消したら primary_image_id を空にする（WRD-UC-06）。
+      x-lifepipe-requirements: [WRD-UC-06, WRD-BR-01]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wardrobe/items/{item_id}/primary-image:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeItemId'
+    put:
+      operationId: wardrobeSetPrimaryImage
+      tags: [wardrobe]
+      summary: 一覧に出す画像を選ぶ
+      description: 指定した画像はこの衣服のものでなければならない（違えば 404。WRD-BR-01）。
+      x-lifepipe-requirements: [WRD-UC-06, WRD-BR-01]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobePrimaryImageSet'
+      responses:
+        '200':
+          description: 更新後の衣服
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wardrobe/items/{item_id}/wash-status:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeItemId'
+    post:
+      operationId: wardrobeChangeWashStatus
+      tags: [wardrobe]
+      summary: 洗濯ステータスを変更する
+      description: |
+        遷移は WRD-BR-02 のとおり。mark_dirty は clean / in_laundry → needs_wash（trigger=manual）、
+        send_to_laundry は clean / needs_wash → in_laundry（manual）、
+        mark_washed は needs_wash / in_laundry / clean → clean（trigger=washed。wears_since_wash=0、last_washed_at=現在時刻）。
+        遷移できない組み合わせは 409。どの遷移でも WashLog を1件残す。
+        wears_before_wash が 0 の服は洗濯管理の対象外で 422（WRD-BR-03）。
+      x-lifepipe-requirements: [WRD-UC-11, WRD-BR-02, WRD-BR-03]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeWashStatusChange'
+      responses:
+        '200':
+          description: 変更後の衣服
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /wardrobe/wash-status/batch:
+    post:
+      operationId: wardrobeBatchChangeWashStatus
+      tags: [wardrobe]
+      summary: 複数着の洗濯ステータスをまとめて変更する
+      description: |
+        遷移は WRD-BR-02。1件でも遷移できなければ全体を 409 にし、何も変更しない。
+        wears_before_wash が 0 の服を含むと 422（WRD-BR-03）。別の世帯の服を含むと 404（WRD-BR-01）。
+      x-lifepipe-requirements: [WRD-UC-11, WRD-BR-01, WRD-BR-02, WRD-BR-03]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeWashStatusBatchChange'
+      responses:
+        '200':
+          description: 変更後の衣服
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeWashStatusBatchResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /wardrobe/items/{item_id}/wash-logs:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeItemId'
+    get:
+      operationId: wardrobeListWashLogs
+      tags: [wardrobe]
+      summary: 衣服の洗濯記録を一覧する
+      description: changed_at の新しい順に返す（WRD-BR-02）。
+      x-lifepipe-requirements: [WRD-UC-11, WRD-BR-01, WRD-BR-02]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 洗濯記録の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeWashLogPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wardrobe/wear-logs:
+    get:
+      operationId: wardrobeListWearLogs
+      tags: [wardrobe]
+      summary: 着用履歴を期間で一覧する
+      description: カレンダー表示は from・to（両端を含む）で期間を取る（WRD-UC-09）。
+      x-lifepipe-requirements: [WRD-UC-09, WRD-BR-01]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: member_id
+          in: query
+          description: 着た人で絞り込む
+          schema:
+            type: string
+            format: uuid
+        - name: item_id
+          in: query
+          description: 服で絞り込む
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          description: 期間の開始日（含む）
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          description: 期間の終了日（含む）
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 着用記録の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeWearLogPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: wardrobeCreateWearLog
+      tags: [wardrobe]
+      summary: 着た服を記録する
+      description: |
+        含まれる服ごとに wear_count と wears_since_wash を 1 増やし、last_worn_on を更新する。
+        wears_since_wash ≥ wears_before_wash（≥ 1）になった clean の服は needs_wash にする（WRD-BR-05）。
+        同じメンバー・同じ日に既に記録した服は数えない（WRD-BR-06）。
+        worn_on が last_washed_at の日付より前なら wear_count だけ増やす（WRD-BR-07）。
+        in_laundry・アーカイブ済みの服は 409（WRD-BR-09）。worn_on が未来なら 422、item_ids は1件以上で同じ世帯のもの（WRD-BR-10）。
+        rating は 1〜5（WRD-BR-24）。
+      x-lifepipe-requirements: [WRD-UC-08, WRD-BR-05, WRD-BR-06, WRD-BR-07, WRD-BR-09, WRD-BR-10, WRD-BR-24]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeWearLogCreate'
+      responses:
+        '201':
+          description: 作成した着用記録
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeWearLog'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /wardrobe/wear-logs/{wear_log_id}:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeWearLogId'
+    get:
+      operationId: wardrobeGetWearLog
+      tags: [wardrobe]
+      summary: 着用記録を取得する
+      x-lifepipe-requirements: [WRD-UC-10, WRD-BR-01]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 着用記録
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeWearLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: wardrobeUpdateWearLog
+      tags: [wardrobe]
+      summary: 着用記録を修正する
+      description: |
+        外れた服は WRD-BR-08 のとおり回数を戻し、加わった服は WRD-BR-05〜07 のとおり数える。洗濯ステータスは自動では戻さない。
+        制約は作成と同じ（WRD-BR-09、WRD-BR-10、WRD-BR-24）。
+      x-lifepipe-requirements: [WRD-UC-10, WRD-BR-05, WRD-BR-06, WRD-BR-07, WRD-BR-08, WRD-BR-09, WRD-BR-10, WRD-BR-24]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeWearLogUpdate'
+      responses:
+        '200':
+          description: 修正後の着用記録
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeWearLog'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: wardrobeDeleteWearLog
+      tags: [wardrobe]
+      summary: 誤った着用記録を削除する
+      description: |
+        含まれていた服ごとに wear_count を 1 減らし、その日が last_washed_at より後なら wears_since_wash も 1 減らす（0 未満にしない）。
+        last_worn_on は残りの記録から計算し直す。洗濯ステータスは自動では戻さない（WRD-BR-08）。
+      x-lifepipe-requirements: [WRD-UC-10, WRD-BR-08]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wardrobe/available-items:
+    get:
+      operationId: wardrobeListAvailableItems
+      tags: [wardrobe]
+      summary: 当日着られる服を役割別に取得する
+      description: |
+        status=active かつ wash_status=clean の服だけを候補にする（WRD-BR-11）。
+        気温は min_temp・max_temp、無ければ気温帯と厚さの対応表で判定し、outerwear は temp_min で帯を決める（WRD-BR-12）。
+        季節は気温帯から決め、暦の月は使わない（WRD-BR-13）。
+        temp_min < 15℃ または precipitation_probability ≥ 50% なら outerwear を必要とし、雨なら water_resistant を先に並べる（WRD-BR-14）。
+        occasion・min_formality で場面を絞る（WRD-BR-15）。役割ごとに last_worn_on の古い順（未着用を先）、同じなら wear_count の少ない順（WRD-BR-16）。
+        member_id を省略すると世帯全員の服を返す（WRD-BR-17）。AI が使えない設定でも動く（WRD-BR-21）。
+      x-lifepipe-requirements: [WRD-UC-13, WRD-BR-11, WRD-BR-12, WRD-BR-13, WRD-BR-14, WRD-BR-15, WRD-BR-16, WRD-BR-17, WRD-BR-21]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/WardrobeConditionDate'
+        - $ref: '#/components/parameters/WardrobeConditionTempMax'
+        - $ref: '#/components/parameters/WardrobeConditionTempMin'
+        - $ref: '#/components/parameters/WardrobeConditionPrecipitationProbability'
+        - $ref: '#/components/parameters/WardrobeConditionOccasion'
+        - $ref: '#/components/parameters/WardrobeConditionMinFormality'
+        - name: member_id
+          in: query
+          description: 指定したメンバーの服だけを返す（WRD-BR-17）
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 役割別の候補
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeAvailableItems'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /wardrobe/image-jobs/{job_id}:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeJobId'
+    get:
+      operationId: wardrobeGetImageJob
+      tags: [wardrobe]
+      summary: 画像処理ジョブの状態を取得する
+      description: pending → running → succeeded / failed と進み、failed は最大 3 回まで再試行する（WRD-BR-20）。
+      x-lifepipe-requirements: [WRD-UC-15, WRD-BR-20, WRD-BR-25]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: ジョブ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeImageJob'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wardrobe/items/{item_id}/images/{image_id}/background-removal:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeItemId'
+      - $ref: '#/components/parameters/WardrobeImageId'
+    post:
+      operationId: wardrobeCreateBackgroundRemovalJob
+      tags: [wardrobe]
+      summary: 画像の背景除去ジョブを作る
+      description: |
+        非同期の ImageJob（type=background_removal）を作り 202 で返す。結果は kind=background_removed の新しい画像として保存し、元画像は上書きしない（WRD-BR-20）。
+        背景除去が使えない設定では 501（WRD-BR-21）。
+      x-lifepipe-requirements: [WRD-UC-17, WRD-BR-20, WRD-BR-21]
+      x-lifepipe-priority: later
+      responses:
+        '202':
+          description: 作成したジョブ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeImageJob'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '501':
+          description: 背景除去が使えない設定（WRD-BR-21）
+
+  /wardrobe/items/{item_id}/images/{image_id}/tagging:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeItemId'
+      - $ref: '#/components/parameters/WardrobeImageId'
+    post:
+      operationId: wardrobeCreateTaggingJob
+      tags: [wardrobe]
+      summary: AI による属性推定ジョブを作る
+      description: |
+        非同期の ImageJob（type=ai_tagging）を作り 202 で返す。推定結果は suggested_attributes に提案として持ち、属性は上書きしない（WRD-BR-20）。
+        AI が使えない設定では 501（WRD-BR-21）。
+      x-lifepipe-requirements: [WRD-UC-16, WRD-BR-20, WRD-BR-21]
+      x-lifepipe-priority: later
+      responses:
+        '202':
+          description: 作成したジョブ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeImageJob'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '501':
+          description: AI が使えない設定（WRD-BR-21）
+
+  /wardrobe/items/{item_id}/images/{image_id}/tagging/accept:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeItemId'
+      - $ref: '#/components/parameters/WardrobeImageId'
+    post:
+      operationId: wardrobeAcceptTagging
+      tags: [wardrobe]
+      summary: AI の推定結果を確認して属性に反映する
+      description: |
+        succeeded の ai_tagging ジョブの提案を、利用者が承認したときだけ属性に反映する（WRD-BR-20）。
+        attributes に送った項目だけを反映する。利用者が手で直した値を送ってもよい。ジョブが succeeded でなければ 409。
+      x-lifepipe-requirements: [WRD-UC-16, WRD-BR-20, WRD-BR-24]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeTaggingAccept'
+      responses:
+        '200':
+          description: 反映後の衣服
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /wardrobe/outfits:
+    get:
+      operationId: wardrobeListOutfits
+      tags: [wardrobe]
+      summary: コーディネートを一覧する
+      x-lifepipe-requirements: [WRD-UC-20, WRD-BR-01]
+      x-lifepipe-priority: later
+      parameters:
+        - name: member_id
+          in: query
+          description: 着る人で絞り込む
+          schema:
+            type: string
+            format: uuid
+        - name: source
+          in: query
+          description: 作成の経路で絞り込む
+          schema:
+            $ref: '#/components/schemas/WardrobeOutfitSource'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: コーディネートの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeOutfitPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: wardrobeCreateOutfit
+      tags: [wardrobe]
+      summary: コーディネートを手動で作る
+      description: source=manual で保存する。AI が使えない設定でも動く（WRD-BR-21）。item_ids は同じ世帯の服（WRD-BR-01）。
+      x-lifepipe-requirements: [WRD-UC-20, WRD-BR-01, WRD-BR-21]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeOutfitCreate'
+      responses:
+        '201':
+          description: 作成したコーディネート
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeOutfit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /wardrobe/outfits/{outfit_id}:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeOutfitId'
+    get:
+      operationId: wardrobeGetOutfit
+      tags: [wardrobe]
+      summary: コーディネートを取得する
+      x-lifepipe-requirements: [WRD-UC-20, WRD-BR-01]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: コーディネート
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeOutfit'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: wardrobeUpdateOutfit
+      tags: [wardrobe]
+      summary: コーディネートを更新する
+      x-lifepipe-requirements: [WRD-UC-20, WRD-BR-01]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeOutfitUpdate'
+      responses:
+        '200':
+          description: 更新後のコーディネート
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeOutfit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: wardrobeDeleteOutfit
+      tags: [wardrobe]
+      summary: コーディネートを削除する
+      x-lifepipe-requirements: [WRD-UC-20, WRD-BR-01]
+      x-lifepipe-priority: later
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wardrobe/outfit-suggestions:
+    post:
+      operationId: wardrobeCreateOutfitSuggestion
+      tags: [wardrobe]
+      summary: AI にコーディネートを提案させる
+      description: |
+        条件は available-items と同じ（WRD-BR-11〜17）に、メモを加えられる。好みは過去の採用・却下の反応から使う。
+        AI の応答待ちが長いため非同期にし、202 で提案の受付を返す。結果は wardrobeGetOutfitSuggestion で取る。
+        AI が使えない設定では 501（WRD-BR-21）。
+      x-lifepipe-requirements: [WRD-UC-18, WRD-BR-11, WRD-BR-12, WRD-BR-13, WRD-BR-14, WRD-BR-15, WRD-BR-16, WRD-BR-17, WRD-BR-21]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeOutfitSuggestionCreate'
+      responses:
+        '202':
+          description: 受け付けた提案
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeOutfitSuggestion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '501':
+          description: AI が使えない設定（WRD-BR-21）
+
+  /wardrobe/outfit-suggestions/{suggestion_id}:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeSuggestionId'
+    get:
+      operationId: wardrobeGetOutfitSuggestion
+      tags: [wardrobe]
+      summary: コーディネート提案の状態と結果を取得する
+      description: 非同期の提案の結果を読む。succeeded なら source=ai_suggestion のコーディネートを含む（WRD-UC-18）。
+      x-lifepipe-requirements: [WRD-UC-18, WRD-BR-25]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 提案
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeOutfitSuggestion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wardrobe/outfit-suggestions/{suggestion_id}/feedback:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeSuggestionId'
+    post:
+      operationId: wardrobeRecordOutfitSuggestionFeedback
+      tags: [wardrobe]
+      summary: 提案への採用・却下の反応を記録する
+      description: 提案に含まれるコーディネートの feedback と feedback_note を記録する（WRD-UC-18）。提案に含まれない outfit_id は 404。
+      x-lifepipe-requirements: [WRD-UC-18]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobeOutfitFeedbackCreate'
+      responses:
+        '200':
+          description: 反応を記録したコーディネート
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeOutfit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /wardrobe/items/{item_id}/pairings:
+    parameters:
+      - $ref: '#/components/parameters/WardrobeItemId'
+    post:
+      operationId: wardrobeCreatePairings
+      tags: [wardrobe]
+      summary: 1着を起点に合う服の組み合わせを作る
+      description: |
+        起点の服を含むコーディネート（source=pairing）を作って返す。候補は status=active かつ wash_status=clean の服（WRD-BR-11）。
+        AI が使えない設定では 501（WRD-BR-21）。
+      x-lifepipe-requirements: [WRD-UC-19, WRD-BR-11, WRD-BR-21]
+      x-lifepipe-priority: later
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WardrobePairingCreate'
+      responses:
+        '201':
+          description: 作成した組み合わせ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobePairingResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '501':
+          description: AI が使えない設定（WRD-BR-21）
+
+  /wardrobe/stats:
+    get:
+      operationId: wardrobeGetStats
+      tags: [wardrobe]
+      summary: 着用状況と色の分布を集計する
+      description: よく着る服・期間内に着ていない服・色の分布を返す。アーカイブ済みの服の着用履歴も集計に残す（WRD-BR-22）。
+      x-lifepipe-requirements: [WRD-UC-21, WRD-BR-22]
+      x-lifepipe-priority: later
+      parameters:
+        - name: from
+          in: query
+          description: 集計期間の開始日（含む）
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          description: 集計期間の終了日（含む）
+          schema:
+            type: string
+            format: date
+        - name: member_id
+          in: query
+          description: 指定したメンバーの服だけを集計する
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 集計結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WardrobeStats'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    WardrobeHouseholdId:
+      name: household_id
+      in: path
+      required: true
+      description: 世帯 ID
+      schema:
+        type: string
+        format: uuid
+    WardrobeMemberId:
+      name: member_id
+      in: path
+      required: true
+      description: メンバー ID
+      schema:
+        type: string
+        format: uuid
+    WardrobeItemId:
+      name: item_id
+      in: path
+      required: true
+      description: 衣服 ID
+      schema:
+        type: string
+        format: uuid
+    WardrobeImageId:
+      name: image_id
+      in: path
+      required: true
+      description: 画像 ID
+      schema:
+        type: string
+        format: uuid
+    WardrobeWearLogId:
+      name: wear_log_id
+      in: path
+      required: true
+      description: 着用記録 ID
+      schema:
+        type: string
+        format: uuid
+    WardrobeJobId:
+      name: job_id
+      in: path
+      required: true
+      description: 画像処理ジョブ ID
+      schema:
+        type: string
+        format: uuid
+    WardrobeOutfitId:
+      name: outfit_id
+      in: path
+      required: true
+      description: コーディネート ID
+      schema:
+        type: string
+        format: uuid
+    WardrobeSuggestionId:
+      name: suggestion_id
+      in: path
+      required: true
+      description: コーディネート提案 ID
+      schema:
+        type: string
+        format: uuid
+    WardrobeIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: 購入の振り分けからの登録で付ける冪等キー。24 時間、同じキーの再送に同じ結果を返す（WRD-BR-23）
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+    WardrobeConditionDate:
+      name: date
+      in: query
+      required: true
+      description: 対象の日付
+      schema:
+        type: string
+        format: date
+    WardrobeConditionTempMax:
+      name: temp_max
+      in: query
+      required: true
+      description: 当日の最高気温（℃）
+      schema:
+        type: number
+        minimum: -60
+        maximum: 60
+    WardrobeConditionTempMin:
+      name: temp_min
+      in: query
+      required: true
+      description: 当日の最低気温（℃）。temp_max 以下
+      schema:
+        type: number
+        minimum: -60
+        maximum: 60
+    WardrobeConditionPrecipitationProbability:
+      name: precipitation_probability
+      in: query
+      required: false
+      description: 降水確率（%）。省略時は 0
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 100
+        default: 0
+    WardrobeConditionOccasion:
+      name: occasion
+      in: query
+      required: true
+      description: 予定から決めた場面。予定が無く在宅なら home、外出で場面が分からなければ casual（WRD-BR-15）
+      schema:
+        $ref: '#/components/schemas/WardrobeOccasion'
+    WardrobeConditionMinFormality:
+      name: min_formality
+      in: query
+      required: false
+      description: これ以上の formality の服に絞る（WRD-BR-15）
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 5
+
+  schemas:
+    # ---- enums ----
+    WardrobeCategory:
+      type: string
+      description: 衣服の種類
+      enum: [top, bottom, one_piece, outerwear, innerwear, shoes, accessory, bag, other]
+    WardrobeSeason:
+      type: string
+      enum: [spring, summer, autumn, winter]
+    WardrobeOccasion:
+      type: string
+      description: 場面
+      enum: [casual, work, formal, sport, home]
+    WardrobeWashStatus:
+      type: string
+      description: 洗濯ステータス（WRD-BR-02）
+      enum: [clean, needs_wash, in_laundry]
+    WardrobeItemStatus:
+      type: string
+      description: 所持状態
+      enum: [active, archived]
+    WardrobeItemSource:
+      type: string
+      description: 登録の経路
+      enum: [manual, purchase, import]
+    WardrobeItemSort:
+      type: string
+      description: 衣服一覧の並べ替え。先頭の `-` は降順
+      enum: [last_worn_on, -last_worn_on, wear_count, -wear_count, created_at, -created_at]
+    WardrobeImageKind:
+      type: string
+      description: 画像の種類。MVP は original だけを作る
+      enum: [original, thumbnail, background_removed]
+    WardrobeImageContentType:
+      type: string
+      enum: [image/jpeg, image/png, image/webp]
+    WardrobeImageJobType:
+      type: string
+      enum: [thumbnail, background_removal, ai_tagging]
+    WardrobeJobStatus:
+      type: string
+      description: 非同期処理の状態（WRD-BR-20）
+      enum: [pending, running, succeeded, failed]
+    WardrobeWashTrigger:
+      type: string
+      description: 洗濯ステータス変更のきっかけ
+      enum: [wear_threshold, manual, washed]
+    WardrobeWashAction:
+      type: string
+      description: |
+        mark_dirty: 要洗濯にする / send_to_laundry: 洗濯に出す / mark_washed: 洗濯済みにする（WRD-BR-02）
+      enum: [mark_dirty, send_to_laundry, mark_washed]
+    WardrobeOutfitSource:
+      type: string
+      enum: [manual, ai_suggestion, pairing]
+    WardrobeOutfitFeedback:
+      type: string
+      enum: [none, accepted, rejected]
+    WardrobeOutfitFeedbackValue:
+      type: string
+      description: 提案への反応として送れる値
+      enum: [accepted, rejected]
+
+    # ---- Household ----
+    WardrobeHousehold:
+      type: object
+      required: [id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: サンプル家
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WardrobeHouseholdUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    # ---- Member ----
+    WardrobeMember:
+      type: object
+      required: [id, household_id, display_name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        household_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          nullable: true
+          description: LifePipe の認証で使う利用者 ID。ログインしない家族は null
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: メンバーA
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WardrobeMemberCreate:
+      type: object
+      required: [display_name]
+      properties:
+        user_id:
+          type: string
+          nullable: true
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+    WardrobeMemberUpdate:
+      type: object
+      properties:
+        user_id:
+          type: string
+          nullable: true
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+    WardrobeMemberPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WardrobeMember'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- Item ----
+    WardrobeItem:
+      type: object
+      required:
+        - id
+        - household_id
+        - owner_member_id
+        - name
+        - category
+        - warmth
+        - water_resistant
+        - wash_status
+        - wears_before_wash
+        - wears_since_wash
+        - wear_count
+        - status
+        - source
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        household_id:
+          type: string
+          format: uuid
+        owner_member_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: 紺のシャツ
+        category:
+          $ref: '#/components/schemas/WardrobeCategory'
+        subcategory:
+          type: string
+          nullable: true
+          maxLength: 100
+        colors:
+          type: array
+          description: 色。先頭を主な色とする
+          items:
+            type: string
+            maxLength: 50
+          example: [navy, white]
+        pattern:
+          type: string
+          nullable: true
+          maxLength: 100
+        material:
+          type: string
+          nullable: true
+          maxLength: 100
+        brand:
+          type: string
+          nullable: true
+          maxLength: 100
+        size:
+          type: string
+          nullable: true
+          maxLength: 50
+        seasons:
+          type: array
+          description: 着る季節。空は通年
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WardrobeSeason'
+        warmth:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: 厚さ・暖かさ。1（薄手）〜5（厚手）
+        min_temp:
+          type: number
+          nullable: true
+          description: 着られる最低気温（℃）。max_temp 以下（WRD-BR-24）
+        max_temp:
+          type: number
+          nullable: true
+          description: 着られる最高気温（℃）
+        water_resistant:
+          type: boolean
+        occasions:
+          type: array
+          description: 向いている場面。空は casual と home だけとみなす
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WardrobeOccasion'
+        formality:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5
+          description: フォーマル度。1（部屋着）〜5（礼装）
+        notes:
+          type: string
+          nullable: true
+          maxLength: 2000
+        wash_status:
+          $ref: '#/components/schemas/WardrobeWashStatus'
+        wears_before_wash:
+          type: integer
+          minimum: 0
+          maximum: 99
+          description: 洗濯が必要になるまでの着用回数。0 は洗濯管理の対象外（WRD-BR-03、WRD-BR-04）
+        wears_since_wash:
+          type: integer
+          minimum: 0
+          readOnly: true
+        wear_count:
+          type: integer
+          minimum: 0
+          readOnly: true
+        last_worn_on:
+          type: string
+          format: date
+          nullable: true
+          readOnly: true
+        last_washed_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/WardrobeItemStatus'
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+        primary_image_id:
+          type: string
+          format: uuid
+          nullable: true
+        source:
+          $ref: '#/components/schemas/WardrobeItemSource'
+        purchased_on:
+          type: string
+          format: date
+          nullable: true
+        purchase_price:
+          type: string
+          nullable: true
+          pattern: '^-?\d+(\.\d{1,4})?$'
+          description: 購入価格（10進数の文字列）
+          example: '3990'
+        currency:
+          type: string
+          nullable: true
+          pattern: '^[A-Z]{3}$'
+          description: ISO 4217 の通貨コード
+          example: JPY
+        store:
+          type: string
+          nullable: true
+          maxLength: 200
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WardrobeItemCreate:
+      type: object
+      required: [owner_member_id, name, category]
+      properties:
+        owner_member_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        category:
+          $ref: '#/components/schemas/WardrobeCategory'
+        subcategory:
+          type: string
+          nullable: true
+          maxLength: 100
+        colors:
+          type: array
+          items:
+            type: string
+            maxLength: 50
+        pattern:
+          type: string
+          nullable: true
+          maxLength: 100
+        material:
+          type: string
+          nullable: true
+          maxLength: 100
+        brand:
+          type: string
+          nullable: true
+          maxLength: 100
+        size:
+          type: string
+          nullable: true
+          maxLength: 50
+        seasons:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WardrobeSeason'
+        warmth:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 3
+        min_temp:
+          type: number
+          nullable: true
+        max_temp:
+          type: number
+          nullable: true
+        water_resistant:
+          type: boolean
+          default: false
+        occasions:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WardrobeOccasion'
+        formality:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5
+        notes:
+          type: string
+          nullable: true
+          maxLength: 2000
+        wears_before_wash:
+          type: integer
+          minimum: 0
+          maximum: 99
+          description: 省略時は category の既定値（WRD-BR-04）
+        source:
+          $ref: '#/components/schemas/WardrobeItemSource'
+        purchased_on:
+          type: string
+          format: date
+          nullable: true
+        purchase_price:
+          type: string
+          nullable: true
+          pattern: '^-?\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          nullable: true
+          pattern: '^[A-Z]{3}$'
+        store:
+          type: string
+          nullable: true
+          maxLength: 200
+    WardrobeItemUpdate:
+      type: object
+      description: 送った項目だけを更新する。回数・洗濯関係・status・source は含めない
+      properties:
+        owner_member_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        category:
+          $ref: '#/components/schemas/WardrobeCategory'
+        subcategory:
+          type: string
+          nullable: true
+          maxLength: 100
+        colors:
+          type: array
+          items:
+            type: string
+            maxLength: 50
+        pattern:
+          type: string
+          nullable: true
+          maxLength: 100
+        material:
+          type: string
+          nullable: true
+          maxLength: 100
+        brand:
+          type: string
+          nullable: true
+          maxLength: 100
+        size:
+          type: string
+          nullable: true
+          maxLength: 50
+        seasons:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WardrobeSeason'
+        warmth:
+          type: integer
+          minimum: 1
+          maximum: 5
+        min_temp:
+          type: number
+          nullable: true
+        max_temp:
+          type: number
+          nullable: true
+        water_resistant:
+          type: boolean
+        occasions:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WardrobeOccasion'
+        formality:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5
+        notes:
+          type: string
+          nullable: true
+          maxLength: 2000
+        wears_before_wash:
+          type: integer
+          minimum: 0
+          maximum: 99
+        purchased_on:
+          type: string
+          format: date
+          nullable: true
+        purchase_price:
+          type: string
+          nullable: true
+          pattern: '^-?\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          nullable: true
+          pattern: '^[A-Z]{3}$'
+        store:
+          type: string
+          nullable: true
+          maxLength: 200
+    WardrobeItemPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WardrobeItem'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- ItemImage ----
+    WardrobeItemImage:
+      type: object
+      description: 衣服の画像。保存先のキーは返さない（WRD-BR-19）
+      required: [id, item_id, kind, content_type, byte_size, url, url_expires_at, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        item_id:
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/WardrobeImageKind'
+        source_image_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 加工元の画像（thumbnail・background_removed のとき）
+        content_type:
+          $ref: '#/components/schemas/WardrobeImageContentType'
+        byte_size:
+          type: integer
+          minimum: 1
+          maximum: 52428800
+        width:
+          type: integer
+          nullable: true
+          minimum: 1
+        height:
+          type: integer
+          nullable: true
+          minimum: 1
+        url:
+          type: string
+          format: uri
+          description: 有効期限付きの取得 URL。取得のたびに発行する
+        url_expires_at:
+          type: string
+          format: date-time
+          description: url の有効期限（発行から 1 時間）
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WardrobeItemImageUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: jpeg・png・webp、50MB 以下（WRD-BR-18）
+    WardrobeItemImagePage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WardrobeItemImage'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+    WardrobePrimaryImageSet:
+      type: object
+      required: [image_id]
+      properties:
+        image_id:
+          type: string
+          format: uuid
+
+    # ---- ImageJob ----
+    WardrobeImageJob:
+      type: object
+      required: [id, item_id, image_id, type, status, attempts, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        item_id:
+          type: string
+          format: uuid
+        image_id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/WardrobeImageJobType'
+        status:
+          $ref: '#/components/schemas/WardrobeJobStatus'
+        attempts:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: 試行回数。failed は最大 3 回まで再試行する（WRD-BR-20）
+        error_message:
+          type: string
+          nullable: true
+          description: 失敗の理由。個人のデータを含めない（WRD-BR-25）
+        result_image_id:
+          type: string
+          format: uuid
+          nullable: true
+        suggested_attributes:
+          type: string
+          nullable: true
+          description: AI が提案した属性（JSON 文字列。ai_tagging のとき）
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WardrobeTaggingAccept:
+      type: object
+      required: [job_id, attributes]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: 承認する ai_tagging ジョブ
+        attributes:
+          $ref: '#/components/schemas/WardrobeItemUpdate'
+
+    # ---- Wash ----
+    WardrobeWashStatusChange:
+      type: object
+      required: [action]
+      properties:
+        action:
+          $ref: '#/components/schemas/WardrobeWashAction'
+    WardrobeWashStatusBatchChange:
+      type: object
+      required: [item_ids, action]
+      properties:
+        item_ids:
+          type: array
+          minItems: 1
+          maxItems: 200
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        action:
+          $ref: '#/components/schemas/WardrobeWashAction'
+    WardrobeWashStatusBatchResult:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WardrobeItem'
+    WardrobeWashLog:
+      type: object
+      required: [id, item_id, from_status, to_status, trigger, changed_at, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        item_id:
+          type: string
+          format: uuid
+        from_status:
+          $ref: '#/components/schemas/WardrobeWashStatus'
+        to_status:
+          $ref: '#/components/schemas/WardrobeWashStatus'
+        trigger:
+          $ref: '#/components/schemas/WardrobeWashTrigger'
+        changed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WardrobeWashLogPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WardrobeWashLog'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- WearLog ----
+    WardrobeWearLog:
+      type: object
+      required: [id, household_id, member_id, worn_on, item_ids, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        household_id:
+          type: string
+          format: uuid
+        member_id:
+          type: string
+          format: uuid
+        worn_on:
+          type: string
+          format: date
+        item_ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        outfit_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 元にしたコーディネート（後回し）
+        occasion:
+          allOf:
+            - $ref: '#/components/schemas/WardrobeOccasion'
+          type: string
+          nullable: true
+        rating:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5
+        note:
+          type: string
+          nullable: true
+          maxLength: 2000
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WardrobeWearLogCreate:
+      type: object
+      required: [member_id, worn_on, item_ids]
+      properties:
+        member_id:
+          type: string
+          format: uuid
+        worn_on:
+          type: string
+          format: date
+          description: 未来の日付は 422（WRD-BR-10）
+        item_ids:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        outfit_id:
+          type: string
+          format: uuid
+          nullable: true
+        occasion:
+          $ref: '#/components/schemas/WardrobeOccasion'
+        rating:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5
+        note:
+          type: string
+          nullable: true
+          maxLength: 2000
+    WardrobeWearLogUpdate:
+      type: object
+      properties:
+        member_id:
+          type: string
+          format: uuid
+        worn_on:
+          type: string
+          format: date
+        item_ids:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        outfit_id:
+          type: string
+          format: uuid
+          nullable: true
+        occasion:
+          allOf:
+            - $ref: '#/components/schemas/WardrobeOccasion'
+          type: string
+          nullable: true
+        rating:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5
+        note:
+          type: string
+          nullable: true
+          maxLength: 2000
+    WardrobeWearLogPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WardrobeWearLog'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- Available items ----
+    WardrobeAvailableItems:
+      type: object
+      description: 役割別の候補。各配列は last_worn_on の古い順（未着用を先）、同じなら wear_count の少ない順（WRD-BR-16）
+      required: [date, seasons, outerwear_required, top, bottom, one_piece, outerwear, shoes, accessory]
+      properties:
+        date:
+          type: string
+          format: date
+        seasons:
+          type: array
+          description: 気温帯から決めた当日の季節（WRD-BR-13）
+          items:
+            $ref: '#/components/schemas/WardrobeSeason'
+        outerwear_required:
+          type: boolean
+          description: outerwear が必要か（WRD-BR-14）
+        top:
+          type: array
+          description: top と innerwear
+          items:
+            $ref: '#/components/schemas/WardrobeItem'
+        bottom:
+          type: array
+          items:
+            $ref: '#/components/schemas/WardrobeItem'
+        one_piece:
+          type: array
+          items:
+            $ref: '#/components/schemas/WardrobeItem'
+        outerwear:
+          type: array
+          description: 降水確率 50% 以上なら water_resistant=true を先に並べる
+          items:
+            $ref: '#/components/schemas/WardrobeItem'
+        shoes:
+          type: array
+          items:
+            $ref: '#/components/schemas/WardrobeItem'
+        accessory:
+          type: array
+          description: accessory・bag・other
+          items:
+            $ref: '#/components/schemas/WardrobeItem'
+
+    # ---- Outfit ----
+    WardrobeOutfit:
+      type: object
+      required: [id, household_id, member_id, item_ids, source, feedback, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        household_id:
+          type: string
+          format: uuid
+        member_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          nullable: true
+          maxLength: 200
+          example: 週末のカジュアル
+        item_ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        occasion:
+          allOf:
+            - $ref: '#/components/schemas/WardrobeOccasion'
+          type: string
+          nullable: true
+        source:
+          $ref: '#/components/schemas/WardrobeOutfitSource'
+        feedback:
+          $ref: '#/components/schemas/WardrobeOutfitFeedback'
+        feedback_note:
+          type: string
+          nullable: true
+          maxLength: 2000
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WardrobeOutfitCreate:
+      type: object
+      required: [member_id, item_ids]
+      properties:
+        member_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          nullable: true
+          maxLength: 200
+        item_ids:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        occasion:
+          $ref: '#/components/schemas/WardrobeOccasion'
+    WardrobeOutfitUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+          maxLength: 200
+        item_ids:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        occasion:
+          allOf:
+            - $ref: '#/components/schemas/WardrobeOccasion'
+          type: string
+          nullable: true
+    WardrobeOutfitPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WardrobeOutfit'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- Outfit suggestion ----
+    WardrobeOutfitSuggestionCreate:
+      type: object
+      description: 条件は available-items と同じ（WRD-BR-11〜17）にメモを加えたもの
+      required: [member_id, date, temp_max, temp_min, occasion]
+      properties:
+        member_id:
+          type: string
+          format: uuid
+          description: 着る人
+        date:
+          type: string
+          format: date
+        temp_max:
+          type: number
+          minimum: -60
+          maximum: 60
+        temp_min:
+          type: number
+          minimum: -60
+          maximum: 60
+        precipitation_probability:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 0
+        occasion:
+          $ref: '#/components/schemas/WardrobeOccasion'
+        min_formality:
+          type: integer
+          minimum: 1
+          maximum: 5
+        note:
+          type: string
+          maxLength: 1000
+          description: 提案に添えるメモ（例「歩く距離が長い」）
+    WardrobeOutfitSuggestion:
+      type: object
+      required: [id, member_id, status, outfits, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        member_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/WardrobeJobStatus'
+        outfits:
+          type: array
+          description: succeeded のとき、source=ai_suggestion のコーディネート
+          items:
+            $ref: '#/components/schemas/WardrobeOutfit'
+        error_message:
+          type: string
+          nullable: true
+          description: 失敗の理由。個人のデータを含めない（WRD-BR-25）
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WardrobeOutfitFeedbackCreate:
+      type: object
+      required: [outfit_id, feedback]
+      properties:
+        outfit_id:
+          type: string
+          format: uuid
+        feedback:
+          $ref: '#/components/schemas/WardrobeOutfitFeedbackValue'
+        feedback_note:
+          type: string
+          nullable: true
+          maxLength: 2000
+
+    # ---- Pairing ----
+    WardrobePairingCreate:
+      type: object
+      properties:
+        member_id:
+          type: string
+          format: uuid
+          description: 着る人。省略時は起点の服の持ち主
+        occasion:
+          $ref: '#/components/schemas/WardrobeOccasion'
+        count:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 3
+          description: 作る組み合わせの数
+    WardrobePairingResult:
+      type: object
+      required: [base_item_id, outfits]
+      properties:
+        base_item_id:
+          type: string
+          format: uuid
+        outfits:
+          type: array
+          description: source=pairing のコーディネート
+          items:
+            $ref: '#/components/schemas/WardrobeOutfit'
+
+    # ---- Stats ----
+    WardrobeStats:
+      type: object
+      required: [most_worn, unworn_items, color_distribution]
+      properties:
+        from:
+          type: string
+          format: date
+          nullable: true
+        to:
+          type: string
+          format: date
+          nullable: true
+        most_worn:
+          type: array
+          description: 期間内の着用回数の多い順
+          items:
+            $ref: '#/components/schemas/WardrobeItemWearCount'
+        unworn_items:
+          type: array
+          description: 期間内に着ていない active の服
+          items:
+            $ref: '#/components/schemas/WardrobeItem'
+        color_distribution:
+          type: array
+          description: 主な色（colors の先頭）ごとの服の数
+          items:
+            $ref: '#/components/schemas/WardrobeColorCount'
+    WardrobeItemWearCount:
+      type: object
+      required: [item_id, wear_count]
+      properties:
+        item_id:
+          type: string
+          format: uuid
+        wear_count:
+          type: integer
+          minimum: 0
+    WardrobeColorCount:
+      type: object
+      required: [color, item_count]
+      properties:
+        color:
+          type: string
+        item_count:
+          type: integer
+          minimum: 0

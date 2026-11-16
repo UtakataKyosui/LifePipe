@@ -77,6 +77,6 @@ pnpm exec orval --config orval.config.ts
 # Redocly による Lint
 npx @redocly/cli lint openapi/openapi.yaml
 
-# スクリプトによる断片の再マージ（必要な場合）
+# ドメイン別断片（openapi/fragments/*.yaml）から統合仕様を再生成する。openapi.yaml は直接編集せず断片を編集する
 ruby scripts/merge-openapi.rb
 ```

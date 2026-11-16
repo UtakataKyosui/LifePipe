@@ -4,7 +4,7 @@
 require 'yaml'
 require 'fileutils'
 
-FRAG_DIR = ENV.fetch('FRAG_DIR', '/private/tmp/claude-501/-Users-taikiamo-ghq-github-com-UtakataKyosui-LifePipe/a2219c60-f57a-4321-9cd4-d2284d344c7e/scratchpad/openapi-frag')
+FRAG_DIR = ENV.fetch('FRAG_DIR', File.expand_path('../openapi/fragments', __dir__))
 OUT_FILE = File.expand_path('../openapi/openapi.yaml', __dir__)
 
 DOMAINS = %w[inventory wardrobe pantry tasks notes subscriptions].freeze

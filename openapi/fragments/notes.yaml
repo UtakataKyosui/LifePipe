@@ -1,0 +1,1371 @@
+# notes fragment
+paths:
+  /notes/notes:
+    get:
+      operationId: notesListNotes
+      tags: [notes]
+      summary: メモを絞り込んで一覧する
+      description: |
+        呼び出し元が読めるメモだけを返し、読めないメモは total にも含めない（NOT-BR-07, NOT-BR-08）。
+        state を省略すると NORMAL だけを返し、ARCHIVED を指定したときだけアーカイブ済みを返す（NOT-BR-11）。
+        q は本文の部分一致・大文字小文字を区別しない全文検索で、空白区切りの複数語は AND（NOT-BR-22）。
+        tags は指定タグとその子孫タグ（`X/` で始まる）を持つメモが該当し、複数指定は OR。untagged=true でタグなしのメモだけ（NOT-BR-06）。
+        from 以上 to 未満の半開区間で、基準は time_field（既定 created_at）。タイムゾーンなしの値は拒否する（NOT-BR-21）。
+        並びは既定で降順、同じ日時は id で順序を決める。pinned_first=true で pinned が真のメモを先頭に置く（NOT-BR-12, NOT-BR-23）。
+      x-lifepipe-requirements: [NOT-UC-06, NOT-UC-07, NOT-UC-08, NOT-BR-06, NOT-BR-07, NOT-BR-08, NOT-BR-11, NOT-BR-12, NOT-BR-20, NOT-BR-21, NOT-BR-22, NOT-BR-23]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/NotesQuery'
+        - $ref: '#/components/parameters/NotesTags'
+        - $ref: '#/components/parameters/NotesUntagged'
+        - $ref: '#/components/parameters/NotesFrom'
+        - $ref: '#/components/parameters/NotesTo'
+        - $ref: '#/components/parameters/NotesTimeField'
+        - $ref: '#/components/parameters/NotesState'
+        - name: pinned
+          in: query
+          required: false
+          description: ピン留めの有無で絞り込む。
+          schema:
+            type: boolean
+        - name: visibility
+          in: query
+          required: false
+          description: 公開範囲で絞り込む。
+          schema:
+            $ref: '#/components/schemas/NotesVisibility'
+        - name: source
+          in: query
+          required: false
+          description: 作成経路で絞り込む。
+          schema:
+            $ref: '#/components/schemas/NotesNoteSource'
+        - name: has_attachments
+          in: query
+          required: false
+          description: 添付ファイルの有無で絞り込む（NOT-BR-20）。
+          schema:
+            type: boolean
+        - name: has_image
+          in: query
+          required: false
+          description: 画像（本文の画像記法または image/* の添付）の有無で絞り込む（NOT-BR-20）。
+          schema:
+            type: boolean
+        - name: has_link
+          in: query
+          required: false
+          description: 本文のリンクの有無で絞り込む。
+          schema:
+            type: boolean
+        - name: has_incomplete_tasks
+          in: query
+          required: false
+          description: 未チェックのチェックリスト項目の有無で絞り込む。
+          schema:
+            type: boolean
+        - name: order
+          in: query
+          required: false
+          description: 日時の並び順。既定は desc（NOT-BR-23）。
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/NotesSortOrder'
+            default: desc
+        - name: pinned_first
+          in: query
+          required: false
+          description: true なら pinned が真のメモを先頭に置き、その中と残りをそれぞれ order の順に並べる（NOT-BR-12）。
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: メモの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesNotePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: notesCreateNote
+      tags: [notes]
+      summary: メモを作成する
+      description: |
+        Markdown 本文をそのまま保存し、サーバーは書き換えない（NOT-BR-29）。tags と property はサーバーが本文から導出してレスポンスで返す（NOT-BR-01〜05）。
+        visibility の既定は PRIVATE（NOT-BR-07）。created_at・updated_at は指定でき、省略時はサーバー時刻。updated_at は created_at 以上でなければ 422（NOT-BR-24）。
+        attachment_ids で添付ファイルを同じ操作で紐づける。他のメモに紐づく添付は指定できず 409（NOT-BR-14）。本文で参照する管理下の画像は同じメモに紐づく image/* の添付でなければ 422（NOT-BR-18）。
+        Idempotency-Key を付けると Note.external_ref として保存し、同じ所有者で同じ値のメモがあれば新しく作らず既存のメモを 200 で返す（本文・添付は更新しない。NOT-BR-26）。
+        本文のバイト数とメモ件数の上限を検査し、超えたら 413（NOT-BR-28）。
+      x-lifepipe-requirements: [NOT-UC-01, NOT-UC-10, NOT-BR-01, NOT-BR-02, NOT-BR-03, NOT-BR-04, NOT-BR-05, NOT-BR-07, NOT-BR-14, NOT-BR-18, NOT-BR-24, NOT-BR-26, NOT-BR-28, NOT-BR-29]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/NotesIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotesNoteCreate'
+      responses:
+        '201':
+          description: 作成したメモ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesNote'
+        '200':
+          description: 同じ Idempotency-Key（external_ref）のメモがすでにあり、既存のメモを返した（NOT-BR-26）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesNote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/NotesUsageLimitExceeded'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /notes/notes/{note_id}:
+    parameters:
+      - $ref: '#/components/parameters/NotesNoteId'
+    get:
+      operationId: notesGetNote
+      tags: [notes]
+      summary: メモを 1 件取得する
+      description: |
+        状態に関係なく返す（アーカイブ済みも返す。NOT-BR-11）。呼び出し元が読めないメモは 404（NOT-BR-07）。
+      x-lifepipe-requirements: [NOT-UC-02, NOT-BR-07, NOT-BR-11]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: メモ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesNote'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: notesUpdateNote
+      tags: [notes]
+      summary: メモを部分更新する（編集・ピン留め・アーカイブ・復元）
+      description: |
+        送った項目だけを更新する。所有者だけが更新できる（NOT-BR-07）。
+        content を変えると tags と property を再計算する（NOT-BR-05）。本文は書き換えずに保存する（NOT-BR-29）。
+        pinned でピン留め・解除する（NOT-BR-12）。state=ARCHIVED でアーカイブ、state=NORMAL で復元する。アーカイブしても本文・タグ・添付・公開範囲・pinned は保持する（NOT-BR-10, NOT-BR-12）。
+        updated_at を省略すると、他の項目を変えたときにサーバー時刻にする。更新後に updated_at が created_at 未満になる要求は 422（NOT-BR-24）。
+        本文の画像参照の検査（NOT-BR-18）と本文バイト数の上限検査（NOT-BR-28）を行う。
+      x-lifepipe-requirements: [NOT-UC-03, NOT-UC-05, NOT-UC-06, NOT-BR-05, NOT-BR-07, NOT-BR-10, NOT-BR-12, NOT-BR-18, NOT-BR-24, NOT-BR-28, NOT-BR-29]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotesNoteUpdate'
+      responses:
+        '200':
+          description: 更新後のメモ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesNote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/NotesUsageLimitExceeded'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: notesDeleteNote
+      tags: [notes]
+      summary: メモを削除する
+      description: |
+        物理削除で元に戻せない。紐づく添付ファイル（実体を含む）も削除する（NOT-BR-13）。所有者だけが削除できる（NOT-BR-07）。
+      x-lifepipe-requirements: [NOT-UC-04, NOT-BR-07, NOT-BR-13]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /notes/notes/{note_id}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/NotesNoteId'
+    get:
+      operationId: notesListNoteAttachments
+      tags: [notes]
+      summary: メモの添付ファイルを一覧する
+      description: |
+        表示順を保って返す。読み出しはメモの公開範囲に従う（NOT-BR-19）。
+      x-lifepipe-requirements: [NOT-UC-10, NOT-BR-19]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 添付ファイルの一覧（表示順）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesAttachmentPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: notesReplaceNoteAttachments
+      tags: [notes]
+      summary: メモの添付ファイルを置き換える
+      description: |
+        指定した添付ファイル一覧（指定順が表示順）で置き換える。外れた添付は未使用に戻り、削除しない（NOT-BR-14）。
+        他のメモに紐づく添付は指定できず 409（NOT-BR-14）。本文が参照する管理下の画像の紐づけを外す結果になる要求は 422（NOT-BR-18）。
+        has_attachments と has_image は直後から反映する（NOT-BR-20）。所有者だけが操作できる（NOT-BR-07）。
+      x-lifepipe-requirements: [NOT-UC-10, NOT-BR-07, NOT-BR-14, NOT-BR-18, NOT-BR-20]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotesNoteAttachmentsReplace'
+      responses:
+        '200':
+          description: 置き換え後の添付ファイル（表示順）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesAttachmentList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /notes/attachments:
+    post:
+      operationId: notesUploadAttachment
+      tags: [notes]
+      summary: ファイルをアップロードする
+      description: |
+        実体を保存する（storage=STORED）。sha256 と size を必ず記録する（NOT-BR-16）。
+        mime_type は申告ではなく内容から判定し直し、EXIF 位置情報などの撮影メタデータは保存前に取り除く（NOT-BR-17）。
+        note_id を指定するとそのメモに紐づける（所有者のメモに限る。NOT-BR-07, NOT-BR-14）。
+        ファイル 1 件のサイズと保存容量の合計の上限を検査し、超えたら 413（NOT-BR-28）。
+      x-lifepipe-requirements: [NOT-UC-10, NOT-UC-12, NOT-BR-07, NOT-BR-14, NOT-BR-16, NOT-BR-17, NOT-BR-28]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotesAttachmentUpload'
+      responses:
+        '201':
+          description: 作成した添付ファイル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesAttachment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/NotesUsageLimitExceeded'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    get:
+      operationId: notesListAttachments
+      tags: [notes]
+      summary: 添付ファイルを一覧する
+      description: |
+        呼び出し元が読める添付ファイルだけを返す（NOT-BR-08, NOT-BR-19）。unused=true で未使用（note_id 未設定）だけを返す（NOT-BR-15）。
+        mime_type は前方一致（例: `image/`）。
+      x-lifepipe-requirements: [NOT-UC-10, NOT-UC-11, NOT-BR-08, NOT-BR-15, NOT-BR-19]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: unused
+          in: query
+          required: false
+          description: true なら未使用の添付ファイルだけを返す。
+          schema:
+            type: boolean
+        - name: mime_type
+          in: query
+          required: false
+          description: MIME タイプの前方一致。
+          schema:
+            type: string
+            minLength: 1
+            example: image/
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 添付ファイルの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesAttachmentPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /notes/attachments/external:
+    post:
+      operationId: notesCreateExternalAttachment
+      tags: [notes]
+      summary: 外部リンクの添付ファイルを登録する
+      description: |
+        実体を保存せず外部リンクだけを持つ（storage=EXTERNAL）。保存容量に数えない（NOT-BR-16）。
+      x-lifepipe-requirements: [NOT-UC-10, NOT-BR-16]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotesExternalAttachmentCreate'
+      responses:
+        '201':
+          description: 作成した添付ファイル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesAttachment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /notes/attachments/delete-unused:
+    post:
+      operationId: notesDeleteUnusedAttachments
+      tags: [notes]
+      summary: 未使用の添付ファイルを一括削除する
+      description: |
+        呼び出し元が所有する未使用の添付ファイルだけを削除し、メモに紐づく添付には触れない。元に戻せない（NOT-BR-15）。
+      x-lifepipe-requirements: [NOT-UC-11, NOT-BR-15]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 削除件数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesDeleteUnusedAttachmentsResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /notes/attachments/{attachment_id}:
+    parameters:
+      - $ref: '#/components/parameters/NotesAttachmentId'
+    get:
+      operationId: notesGetAttachment
+      tags: [notes]
+      summary: 添付ファイルのメタデータを取得する
+      description: |
+        紐づくメモの公開範囲に従う。未使用の添付ファイルは所有者だけが読める（NOT-BR-19）。
+      x-lifepipe-requirements: [NOT-UC-10, NOT-BR-19]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 添付ファイルのメタデータ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesAttachment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: notesUpdateAttachment
+      tags: [notes]
+      summary: 添付ファイルのファイル名を変更する
+      description: |
+        所有者だけが変更できる（NOT-BR-07）。メモへの紐づけは notesReplaceNoteAttachments で行う（NOT-BR-14）。
+      x-lifepipe-requirements: [NOT-UC-10, NOT-BR-07]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotesAttachmentUpdate'
+      responses:
+        '200':
+          description: 更新後の添付ファイル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesAttachment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: notesDeleteAttachment
+      tags: [notes]
+      summary: 添付ファイルを削除する
+      description: |
+        実体を含めて削除し、元に戻せない（NOT-BR-15）。所有者だけが削除できる（NOT-BR-07）。
+        本文が参照している管理下の画像は削除できず 422（NOT-BR-18）。
+      x-lifepipe-requirements: [NOT-UC-11, NOT-BR-07, NOT-BR-15, NOT-BR-18]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /notes/attachments/{attachment_id}/content:
+    parameters:
+      - $ref: '#/components/parameters/NotesAttachmentId'
+    get:
+      operationId: notesDownloadAttachment
+      tags: [notes]
+      summary: 添付ファイルの内容をダウンロードする
+      description: |
+        紐づくメモの公開範囲に従う。未使用の添付ファイルは所有者だけが読める（NOT-BR-19）。
+        storage=EXTERNAL の添付は実体を持たないため 404 を返す。外部リンクは NotesAttachment.external_link を使う（NOT-BR-16）。
+      x-lifepipe-requirements: [NOT-UC-10, NOT-BR-16, NOT-BR-19]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: ファイルの内容。Content-Type は添付ファイルの mime_type。
+          headers:
+            Content-Disposition:
+              description: 元のファイル名を含む attachment 指定。
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /notes/tags:
+    get:
+      operationId: notesListTags
+      tags: [notes]
+      summary: 使われているタグを件数付きで一覧する
+      description: |
+        Note.tags から集計する読み取り専用のデータ（NOT-BR-05）。祖先タグも集計に含む（NOT-BR-02）。大文字と小文字は区別する（NOT-BR-04）。
+        呼び出し元が読める NORMAL 状態のメモだけを数える（NOT-BR-08, NOT-BR-11）。
+      x-lifepipe-requirements: [NOT-UC-09, NOT-BR-02, NOT-BR-04, NOT-BR-05, NOT-BR-08, NOT-BR-11]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: prefix
+          in: query
+          required: false
+          description: タグ名の前方一致（`#` を含めない）。
+          schema:
+            type: string
+            minLength: 1
+            example: purchase/
+        - name: sort
+          in: query
+          required: false
+          description: 並べ替えの基準。既定は name。
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/NotesTagSort'
+            default: name
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: タグの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesTagPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /notes/context:
+    get:
+      operationId: notesGetContext
+      tags: [notes]
+      summary: LLM に渡す文脈としてメモをまとめて取得する
+      description: |
+        期間とタグ（NOT-BR-06, NOT-BR-21 と同じ規則）と全文検索（NOT-BR-22）で対象を選び、created_at の昇順で返す。既定は NORMAL 状態だけ（NOT-BR-11）。
+        max_notes（既定 50、最大 500）と max_bytes（本文の UTF-8 バイト数の合計、既定 65536）のどちらかに達したら打ち切り、truncated=true と打ち切らなければ返った件数 total_count を返す。1 件のメモを途中で切らない。
+        添付ファイルは実体ではなくメタデータ（ID・ファイル名・mime_type）だけを返す（NOT-BR-27）。呼び出し元が読めるメモだけを対象にする（NOT-BR-08）。
+        get_morning_briefing の補足（前日分・ピン留めのメモ）にも使う（NOT-UC-13）。
+      x-lifepipe-requirements: [NOT-UC-13, NOT-BR-06, NOT-BR-08, NOT-BR-11, NOT-BR-21, NOT-BR-22, NOT-BR-27]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/NotesFrom'
+        - $ref: '#/components/parameters/NotesTo'
+        - $ref: '#/components/parameters/NotesTimeField'
+        - $ref: '#/components/parameters/NotesTags'
+        - $ref: '#/components/parameters/NotesQuery'
+        - $ref: '#/components/parameters/NotesState'
+        - name: max_notes
+          in: query
+          required: false
+          description: 返すメモの最大件数。
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+        - name: max_bytes
+          in: query
+          required: false
+          description: 返す本文の UTF-8 バイト数の合計の上限。
+          schema:
+            type: integer
+            minimum: 1
+            default: 65536
+      responses:
+        '200':
+          description: 文脈として渡すメモ（created_at の昇順）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesContext'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /notes/purchase-notes:
+    post:
+      operationId: notesCreatePurchaseNote
+      tags: [notes]
+      summary: 購買メモ・領収書ログを記録する（ingest_purchase）
+      description: |
+        レシート画像・PDF の添付と、購買日時を created_at にした購買メモの作成を 1 回の操作で行う（NOT-BR-25）。
+        visibility は常に PRIVATE で、指定は受け付けない（NOT-BR-09）。source は INGEST_PURCHASE。
+        本文に `#purchase` または `#purchase/` で始まる子タグがなければ 422。サーバーは本文を書き換えない（NOT-BR-25, NOT-BR-29）。
+        Idempotency-Key は必須で Note.external_ref として保存する。同じ所有者で同じ値のメモがあれば新しく作らず既存のメモを 200 で返し、添付ファイルも増やさない（NOT-BR-26）。
+        receipts のアップロードは notesUploadAttachment と同じ規則（NOT-BR-16, NOT-BR-17）で、上限を超えたら 413（NOT-BR-28）。attachment_ids で既にアップロードした未使用の添付を紐づけてもよい（NOT-BR-14）。
+      x-lifepipe-requirements: [NOT-UC-12, NOT-BR-09, NOT-BR-14, NOT-BR-16, NOT-BR-17, NOT-BR-25, NOT-BR-26, NOT-BR-28, NOT-BR-29]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/NotesPurchaseIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotesPurchaseNoteCreate'
+            encoding:
+              receipts:
+                contentType: image/*, application/pdf
+      responses:
+        '201':
+          description: 作成した購買メモ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesNote'
+        '200':
+          description: 同じ Idempotency-Key（external_ref）の購買メモがすでにあり、既存のメモを返した（NOT-BR-26）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesNote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/NotesUsageLimitExceeded'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /notes/usage:
+    get:
+      operationId: notesGetUsage
+      tags: [notes]
+      summary: 利用状況と適用中の利用上限を取得する
+      description: |
+        note_count はアーカイブ済みを含む。storage_bytes は STORED の添付ファイルの合計（未使用を含み、EXTERNAL を除く。NOT-BR-16, NOT-BR-28）。
+      x-lifepipe-requirements: [NOT-UC-14, NOT-BR-16, NOT-BR-28]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 利用状況
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesUsage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /notes/usage-limits:
+    get:
+      operationId: notesGetUsageLimits
+      tags: [notes]
+      summary: 利用上限を取得する
+      description: |
+        値 0 は無制限（NOT-BR-28）。
+      x-lifepipe-requirements: [NOT-UC-14, NOT-BR-28]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 利用上限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesUsageLimits'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: notesReplaceUsageLimits
+      tags: [notes]
+      summary: 利用上限を設定する
+      description: |
+        すべての上限を置き換える。値 0 は無制限。上限を下げても既存のデータは削除しない（NOT-BR-28）。
+      x-lifepipe-requirements: [NOT-UC-14, NOT-BR-28]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotesUsageLimitsReplace'
+      responses:
+        '200':
+          description: 設定後の利用上限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesUsageLimits'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+components:
+  parameters:
+    NotesNoteId:
+      name: note_id
+      in: path
+      required: true
+      description: メモの ID。
+      schema:
+        type: string
+        format: uuid
+    NotesAttachmentId:
+      name: attachment_id
+      in: path
+      required: true
+      description: 添付ファイルの ID。
+      schema:
+        type: string
+        format: uuid
+    NotesQuery:
+      name: q
+      in: query
+      required: false
+      description: 全文検索。本文の部分一致で大文字小文字を区別しない。空白区切りの複数語は AND（NOT-BR-22）。
+      schema:
+        type: string
+        minLength: 1
+    NotesTags:
+      name: tags
+      in: query
+      required: false
+      description: タグ名（`#` を含めない）。指定タグと子孫タグを持つメモが該当し、複数指定は OR（NOT-BR-06）。
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/NotesTagName'
+    NotesUntagged:
+      name: untagged
+      in: query
+      required: false
+      description: true ならタグを 1 つも持たないメモだけを返す（NOT-BR-06）。tags との同時指定は 400。
+      schema:
+        type: boolean
+    NotesFrom:
+      name: from
+      in: query
+      required: false
+      description: 期間の開始（この日時を含む）。タイムゾーン付きの RFC 3339（NOT-BR-21）。
+      schema:
+        type: string
+        format: date-time
+    NotesTo:
+      name: to
+      in: query
+      required: false
+      description: 期間の終了（この日時を含まない）。タイムゾーン付きの RFC 3339（NOT-BR-21）。
+      schema:
+        type: string
+        format: date-time
+    NotesTimeField:
+      name: time_field
+      in: query
+      required: false
+      description: 期間の絞り込みと並べ替えの基準にする日時。既定は created_at（NOT-BR-21, NOT-BR-23）。
+      schema:
+        allOf:
+          - $ref: '#/components/schemas/NotesTimeField'
+        default: created_at
+    NotesState:
+      name: state
+      in: query
+      required: false
+      description: 状態。既定は NORMAL（NOT-BR-11）。
+      schema:
+        allOf:
+          - $ref: '#/components/schemas/NotesNoteState'
+        default: NORMAL
+    NotesIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: 冪等キー。Note.external_ref として保存し、同じ所有者の中で一意（NOT-BR-26）。
+      schema:
+        $ref: '#/components/schemas/NotesExternalRef'
+    NotesPurchaseIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: 取り込みの冪等キー（例としてレシートの取り込み ID）。Note.external_ref として保存する（NOT-BR-26）。
+      schema:
+        $ref: '#/components/schemas/NotesExternalRef'
+  responses:
+    NotesUsageLimitExceeded:
+      description: 利用上限を超える操作のため拒否した。待っても解消しないため Retry-After は返さない（NOT-BR-28）。
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/NotesUsageLimitExceeded'
+  schemas:
+    NotesVisibility:
+      type: string
+      description: 公開範囲。PRIVATE は所有者だけ、PROTECTED は認証済みの利用者、PUBLIC は公開アクセスが有効なときだけ認証なしでも読める（NOT-BR-07）。
+      enum: [PRIVATE, PROTECTED, PUBLIC]
+    NotesNoteState:
+      type: string
+      description: メモの状態（NOT-BR-10）。
+      enum: [NORMAL, ARCHIVED]
+    NotesNoteSource:
+      type: string
+      description: メモの作成経路。
+      enum: [MANUAL, INGEST_PURCHASE, API]
+    NotesAttachmentStorage:
+      type: string
+      description: 実体を保存しているか（STORED）、外部リンクだけを持つか（EXTERNAL）（NOT-BR-16）。
+      enum: [STORED, EXTERNAL]
+    NotesTimeField:
+      type: string
+      description: 期間の絞り込みと並べ替えの基準にする日時。
+      enum: [created_at, updated_at]
+    NotesSortOrder:
+      type: string
+      description: 並び順。
+      enum: [desc, asc]
+    NotesTagSort:
+      type: string
+      description: タグ一覧の並べ替えの基準。name は名前の昇順、note_count は件数の降順。
+      enum: [name, note_count]
+    NotesUsageMetric:
+      type: string
+      description: 超えた利用上限の種類（NOT-BR-28）。
+      enum: [note_count, content_bytes, storage_bytes, upload_bytes]
+    NotesTagName:
+      type: string
+      description: |
+        タグ名（`#` を含めない）。`/` は空でない区切りの間にだけ置け、先頭・末尾の `/` と連続する `/` は不可（NOT-BR-02）。
+        使える文字の詳細は NOT-BR-01。大文字と小文字を区別する（NOT-BR-04）。
+      minLength: 1
+      pattern: '^[^/\s#]+(/[^/\s#]+)*$'
+      example: purchase/grocery
+    NotesExternalRef:
+      type: string
+      description: 呼び出し元が付ける冪等キー。同じ所有者の中で一意（NOT-BR-26）。
+      minLength: 1
+      maxLength: 255
+      example: receipt-import-0001
+    NotesNoteContent:
+      type: string
+      description: |
+        Markdown 本文。空文字は不可。UTF-8 のバイト長は本文上限（UsageLimits.content_bytes、既定 8192）以下（NOT-BR-28）。
+        サーバーは書き換えずにそのまま保存する（NOT-BR-29）。
+      minLength: 1
+      example: "今日のふりかえり #journal/daily\n\n- [ ] 散歩する"
+    NotesNoteProperty:
+      type: object
+      description: 本文と添付から導出する内容プロパティ。読み取り専用（NOT-BR-05, NOT-BR-20）。
+      required: [has_link, has_code, has_task_list, has_incomplete_tasks, has_inline_image, has_attachments, has_image]
+      properties:
+        has_link:
+          type: boolean
+          description: 本文に Markdown のリンクがある。
+        has_code:
+          type: boolean
+          description: 本文にコードブロックまたはインラインコードがある。
+        has_task_list:
+          type: boolean
+          description: 本文にチェックリスト項目がある。
+        has_incomplete_tasks:
+          type: boolean
+          description: 本文に未チェックのチェックリスト項目（`- [ ]`）がある。
+        has_inline_image:
+          type: boolean
+          description: 本文に Markdown の画像記法がある（コード内は除く）。
+        has_attachments:
+          type: boolean
+          description: 紐づく添付ファイルが 1 件以上ある。
+        has_image:
+          type: boolean
+          description: has_inline_image が真、または mime_type が `image/` で始まる添付ファイルが 1 件以上ある。
+    NotesNote:
+      type: object
+      description: メモ。
+      required: [id, owner_id, content, visibility, state, pinned, tags, property, attachments, source, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: メモの ID。サーバーが採番する。
+        owner_id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: 所有者の利用者 ID。ゲートウェイが渡す呼び出し元の ID をサーバーが設定し、変更できない。
+        content:
+          $ref: '#/components/schemas/NotesNoteContent'
+        visibility:
+          $ref: '#/components/schemas/NotesVisibility'
+        state:
+          $ref: '#/components/schemas/NotesNoteState'
+        pinned:
+          type: boolean
+          description: ピン留め。
+        tags:
+          type: array
+          readOnly: true
+          description: 本文から導出したタグ（祖先タグを含む、重複なし）。空配列もありうる（NOT-BR-01〜05）。
+          items:
+            $ref: '#/components/schemas/NotesTagName'
+        property:
+          $ref: '#/components/schemas/NotesNoteProperty'
+        attachments:
+          type: array
+          description: 紐づく添付ファイル（表示順）。空配列もありうる。
+          items:
+            $ref: '#/components/schemas/NotesAttachment'
+        source:
+          $ref: '#/components/schemas/NotesNoteSource'
+        external_ref:
+          type: string
+          nullable: true
+          description: 作成時に受け取った Idempotency-Key。同じ所有者の中で一意（NOT-BR-26）。
+          maxLength: 255
+        created_at:
+          type: string
+          format: date-time
+          description: 作成日時（UTC）。
+        updated_at:
+          type: string
+          format: date-time
+          description: 更新日時（UTC）。created_at 以上（NOT-BR-24）。
+    NotesNoteCreate:
+      type: object
+      description: メモの作成。tags と property は受け付けない（NOT-BR-05）。
+      required: [content]
+      properties:
+        content:
+          $ref: '#/components/schemas/NotesNoteContent'
+        visibility:
+          allOf:
+            - $ref: '#/components/schemas/NotesVisibility'
+          default: PRIVATE
+        created_at:
+          type: string
+          format: date-time
+          description: 作成日時。省略時はサーバー時刻（NOT-BR-24）。
+        updated_at:
+          type: string
+          format: date-time
+          description: 更新日時。省略時はサーバー時刻。created_at 以上（NOT-BR-24）。
+        attachment_ids:
+          type: array
+          description: 同じ操作で紐づける未使用の添付ファイルの ID（指定順が表示順。NOT-BR-14, NOT-BR-18）。
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+    NotesNoteUpdate:
+      type: object
+      description: メモの部分更新。送った項目だけを更新する。
+      minProperties: 1
+      properties:
+        content:
+          $ref: '#/components/schemas/NotesNoteContent'
+        visibility:
+          $ref: '#/components/schemas/NotesVisibility'
+        created_at:
+          type: string
+          format: date-time
+          description: 作成日時（NOT-BR-24）。
+        updated_at:
+          type: string
+          format: date-time
+          description: 更新日時。省略時は他の項目を変えたときにサーバー時刻にする（NOT-BR-24）。
+        pinned:
+          type: boolean
+          description: ピン留め・解除（NOT-BR-12）。
+        state:
+          $ref: '#/components/schemas/NotesNoteState'
+    NotesNotePage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotesNote'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+    NotesNoteAttachmentsReplace:
+      type: object
+      description: メモの添付ファイルの置き換え（NOT-BR-14）。
+      required: [attachment_ids]
+      properties:
+        attachment_ids:
+          type: array
+          description: 紐づける添付ファイルの ID（指定順が表示順）。空配列ならすべて外す。
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+    NotesMediaMetadata:
+      type: object
+      description: 添付ファイルのメディア情報。
+      properties:
+        width:
+          type: integer
+          minimum: 1
+          description: 画像・動画の幅（px）。
+        height:
+          type: integer
+          minimum: 1
+          description: 画像・動画の高さ（px）。
+        duration_seconds:
+          type: number
+          minimum: 0
+          description: 音声・動画の長さ（秒）。
+    NotesAttachment:
+      type: object
+      description: 添付ファイル。
+      required: [id, owner_id, filename, mime_type, size, storage, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: 添付ファイルの ID。
+        owner_id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: アップロードした利用者の ID。サーバーが設定し、変更できない。
+        note_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 紐づくメモの ID。null なら未使用（NOT-BR-14, NOT-BR-15）。
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: 元のファイル名。
+          example: receipt.jpg
+        mime_type:
+          type: string
+          description: IANA メディアタイプ。サーバーが内容から判定し直す（NOT-BR-17）。
+          pattern: '^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$'
+          example: image/jpeg
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          description: バイト数。EXTERNAL の場合は申告値または 0（NOT-BR-16）。
+        sha256:
+          type: string
+          nullable: true
+          pattern: '^[0-9a-f]{64}$'
+          description: 内容の SHA-256（小文字 16 進 64 文字）。STORED のときは必ず値を持つ（NOT-BR-16）。
+        storage:
+          $ref: '#/components/schemas/NotesAttachmentStorage'
+        external_link:
+          type: string
+          format: uri
+          nullable: true
+          description: storage が EXTERNAL のときの URL。STORED のときは null（NOT-BR-16）。
+        media_metadata:
+          $ref: '#/components/schemas/NotesMediaMetadata'
+        created_at:
+          type: string
+          format: date-time
+          description: アップロード日時。
+        updated_at:
+          type: string
+          format: date-time
+          description: 更新日時（ファイル名の変更、メモへの紐づけ・解除）。
+    NotesAttachmentUpload:
+      type: object
+      description: ファイルのアップロード（multipart/form-data）。
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: ファイルの内容。サイズ上限は UsageLimits.upload_bytes（既定 33554432）（NOT-BR-28）。
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: 保存するファイル名。省略時は file パートのファイル名。
+        note_id:
+          type: string
+          format: uuid
+          description: 紐づけるメモの ID。省略時は未使用として保存する。
+    NotesExternalAttachmentCreate:
+      type: object
+      description: 外部リンクの添付ファイルの登録（NOT-BR-16）。
+      required: [external_link, filename, mime_type]
+      properties:
+        external_link:
+          type: string
+          format: uri
+          description: 外部ファイルの URL。
+          example: https://files.example.com/receipt-0001.pdf
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: ファイル名。
+        mime_type:
+          type: string
+          pattern: '^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$'
+          description: IANA メディアタイプ（呼び出し元の申告）。
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          default: 0
+          description: 申告するバイト数。
+    NotesAttachmentUpdate:
+      type: object
+      description: 添付ファイルの部分更新。
+      minProperties: 1
+      properties:
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: 新しいファイル名。
+    NotesAttachmentPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotesAttachment'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+    NotesAttachmentList:
+      type: object
+      description: メモに紐づく添付ファイルの全件（表示順）。
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotesAttachment'
+    NotesDeleteUnusedAttachmentsResult:
+      type: object
+      required: [deleted_count]
+      properties:
+        deleted_count:
+          type: integer
+          minimum: 0
+          description: 削除した未使用の添付ファイルの件数。
+    NotesTag:
+      type: object
+      description: タグの集計（読み取り専用の導出データ。NOT-BR-05）。
+      required: [name, note_count, last_used_at]
+      properties:
+        name:
+          $ref: '#/components/schemas/NotesTagName'
+        note_count:
+          type: integer
+          minimum: 0
+          description: このタグを持つ NORMAL 状態のメモの件数。
+        last_used_at:
+          type: string
+          format: date-time
+          description: このタグを持つメモの最新の created_at。
+    NotesTagPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotesTag'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+    NotesContextAttachment:
+      type: object
+      description: 文脈取得で返す添付ファイルのメタデータ（実体は含まない。NOT-BR-27）。
+      required: [id, filename, mime_type]
+      properties:
+        id:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        mime_type:
+          type: string
+    NotesContextNote:
+      type: object
+      description: 文脈取得で返すメモ。
+      required: [id, content, tags, visibility, pinned, created_at, updated_at, attachments]
+      properties:
+        id:
+          type: string
+          format: uuid
+        content:
+          type: string
+          description: Markdown 本文（途中で切らない。NOT-BR-27）。
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotesTagName'
+        visibility:
+          $ref: '#/components/schemas/NotesVisibility'
+        pinned:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotesContextAttachment'
+    NotesContext:
+      type: object
+      description: LLM に渡す文脈（NOT-BR-27）。
+      required: [notes, truncated, total_count]
+      properties:
+        notes:
+          type: array
+          description: created_at の昇順。
+          items:
+            $ref: '#/components/schemas/NotesContextNote'
+        truncated:
+          type: boolean
+          description: max_notes または max_bytes に達して打ち切ったとき true。
+        total_count:
+          type: integer
+          minimum: 0
+          description: 打ち切らなければ返った件数。
+    NotesPurchaseNoteCreate:
+      type: object
+      description: |
+        購買メモの作成（multipart/form-data）。visibility は受け付けず PRIVATE 固定（NOT-BR-09）。
+        冪等キーは Idempotency-Key ヘッダーで渡す（NOT-BR-26）。
+      required: [purchased_at, content]
+      properties:
+        purchased_at:
+          type: string
+          format: date-time
+          description: 購買日時。メモの created_at になる（NOT-BR-25）。
+        content:
+          type: string
+          minLength: 1
+          description: |
+            Markdown 本文（店名、合計金額、品目の要約など）。`#purchase` または `#purchase/` で始まる子タグを必ず含める（NOT-BR-25）。
+            UTF-8 のバイト長は本文上限以下（NOT-BR-28）。サーバーは書き換えない（NOT-BR-29）。
+          example: "スーパーで買い物 合計 1,234 円 #purchase/grocery"
+        receipts:
+          type: array
+          description: 同じ操作でアップロードして添付するレシート画像・PDF。
+          items:
+            type: string
+            format: binary
+        attachment_ids:
+          type: array
+          description: 既にアップロードした未使用の添付ファイルの ID。
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+    NotesUsageLimits:
+      type: object
+      description: 利用上限。値 0 は無制限（NOT-BR-28）。
+      required: [note_count, content_bytes, storage_bytes, upload_bytes, updated_at]
+      properties:
+        note_count:
+          type: integer
+          format: int64
+          minimum: 0
+          description: メモ件数の上限。既定 0。
+        content_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: メモ 1 件の本文の上限（バイト）。既定 8192。
+        storage_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 添付ファイル合計の上限（バイト）。既定 0。
+        upload_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: ファイル 1 件の上限（バイト）。既定 33554432。
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: 設定の更新日時。
+    NotesUsageLimitsReplace:
+      type: object
+      description: 利用上限の置き換え。値 0 は無制限（NOT-BR-28）。
+      required: [note_count, content_bytes, storage_bytes, upload_bytes]
+      properties:
+        note_count:
+          type: integer
+          format: int64
+          minimum: 0
+        content_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+        storage_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+        upload_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+    NotesUsage:
+      type: object
+      description: 利用状況。
+      required: [note_count, storage_bytes, limits]
+      properties:
+        note_count:
+          type: integer
+          format: int64
+          minimum: 0
+          description: メモの件数（アーカイブ済みを含む）。
+        storage_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: STORED の添付ファイルの合計バイト数（未使用を含み、EXTERNAL を除く）。
+        limits:
+          $ref: '#/components/schemas/NotesUsageLimits'
+    NotesUsageLimitExceeded:
+      type: object
+      description: 利用上限の超過（RFC 9457 problem+json に metric・limit・current を加えたもの。NOT-BR-28）。
+      required: [type, title, status, metric, limit, current]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+        metric:
+          $ref: '#/components/schemas/NotesUsageMetric'
+        limit:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 適用中の上限値。
+        current:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 操作前の現在値。

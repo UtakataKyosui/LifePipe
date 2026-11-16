@@ -1,0 +1,3126 @@
+# inventory fragment
+paths:
+  /inventory/locations:
+    get:
+      operationId: inventoryListLocations
+      tags: [inventory]
+      summary: 保管場所の一覧を取得する
+      description: |
+        保管場所を一覧で返す。各要素に item_count と path（最上位からの経路）を含める。
+        parent_id で直下の子に、root_only=true で最上位だけに絞り込める。
+      x-lifepipe-requirements: [INV-UC-05, INV-UC-06]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: parent_id
+          in: query
+          required: false
+          description: この保管場所の直下の子だけを返す
+          schema:
+            type: string
+            format: uuid
+        - name: root_only
+          in: query
+          required: false
+          description: true なら最上位（親を持たない）の保管場所だけを返す
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/InventoryQ'
+        - $ref: '#/components/parameters/InventoryTagIds'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 保管場所の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryLocationPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: inventoryCreateLocation
+      tags: [inventory]
+      summary: 保管場所を作成する
+      description: |
+        保管場所を作成する。parent_id を指定すると入れ子にできる。
+        存在しない parent_id は 422（INV-BR-01）。同じ親の下で名前が重複したら 409（大文字小文字を区別しない、INV-BR-04）。
+        カスタムフィールド名の重複は 422（INV-BR-19）。
+      x-lifepipe-requirements: [INV-UC-01, INV-BR-01, INV-BR-04, INV-BR-19, INV-BR-20]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryLocationCreate'
+      responses:
+        '201':
+          description: 作成した保管場所
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryLocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /inventory/locations/tree:
+    get:
+      operationId: inventoryGetLocationTree
+      tags: [inventory]
+      summary: 保管場所の階層を木構造で取得する
+      description: |
+        保管場所の階層を入れ子の木構造で返す。with_items=true なら各場所に直接置かれた物品も含める。
+        root_id を指定すると、その場所を根とする部分木を返す。
+      x-lifepipe-requirements: [INV-UC-05]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: with_items
+          in: query
+          required: false
+          description: true なら各場所に置かれた物品を含める
+          schema:
+            type: boolean
+            default: false
+        - name: root_id
+          in: query
+          required: false
+          description: 部分木の根にする保管場所。省略時は最上位の場所すべて
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 保管場所の木構造
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryLocationTree'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/locations/{location_id}:
+    parameters:
+      - $ref: '#/components/parameters/InventoryLocationId'
+    get:
+      operationId: inventoryGetLocation
+      tags: [inventory]
+      summary: 保管場所の詳細を取得する
+      description: |
+        保管場所の詳細を返す。経路（path）、子の場所、直接置かれた物品、評価額合計（total_value）を含める。
+        評価額合計は子孫の場所の物品を含み、売却済みを除いた purchase_price × quantity の通貨ごとの合計（INV-BR-12）。
+      x-lifepipe-requirements: [INV-UC-06, INV-BR-12]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 保管場所の詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryLocationDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: inventoryUpdateLocation
+      tags: [inventory]
+      summary: 保管場所を編集・移動する
+      description: |
+        送った項目だけを更新する。parent_id の変更が移動で、子の場所と置かれた物品も一緒に移る。parent_id を null にすると最上位へ移る（INV-BR-03）。
+        自分自身または子孫を親に指定したら 409（INV-BR-02）。存在しない parent_id は 422（INV-BR-01）。
+        同じ親の下での名前の重複は 409（INV-BR-04）。カスタムフィールド名の重複は 422（INV-BR-19）。
+      x-lifepipe-requirements: [INV-UC-02, INV-UC-03, INV-UC-13, INV-BR-01, INV-BR-02, INV-BR-03, INV-BR-04, INV-BR-19, INV-BR-20]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryLocationUpdate'
+      responses:
+        '200':
+          description: 更新後の保管場所
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryLocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: inventoryDeleteLocation
+      tags: [inventory]
+      summary: 保管場所を削除する
+      description: |
+        子の場所も物品も無いときだけ削除できる。残っていれば 409 を返す（INV-BR-05）。
+      x-lifepipe-requirements: [INV-UC-04, INV-BR-05]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /inventory/items:
+    get:
+      operationId: inventoryListItems
+      tags: [inventory]
+      summary: 物品を検索・一覧する
+      description: |
+        物品を検索して返す。各要素に location_path（置き場所の経路）を含め、応答に total と total_value を含める。
+        キーワード（q）は空白区切りの全語を含むものを返し、二重引用符の語句は語順どおりに一致させる。大文字小文字は区別しない。先頭が「#」なら資産番号で検索する（INV-BR-23）。
+        場所の絞り込みは既定で子孫の場所を含む（include_descendants）。タグはいずれかを持つもの、negate_tags=true で持たないもの（INV-BR-23）。
+        fields は「名前=値」の完全一致を AND で絞り込む（INV-BR-21）。
+        warranty_status は基準日（当日）と warranty_within_days（既定 30 日）で計算する（INV-BR-10）。
+        archived の物品は include_archived=true のときだけ返す（INV-BR-14）。売却済みは既定で返す（INV-BR-13）。
+      x-lifepipe-requirements: [INV-UC-11, INV-UC-12, INV-UC-19, INV-UC-21, INV-BR-10, INV-BR-12, INV-BR-13, INV-BR-14, INV-BR-21, INV-BR-23]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/InventoryQ'
+        - name: location_id
+          in: query
+          required: false
+          description: この保管場所に置かれた物品に絞り込む
+          schema:
+            type: string
+            format: uuid
+        - name: include_descendants
+          in: query
+          required: false
+          description: location_id の絞り込みで子孫の場所を含めるか（INV-BR-23）
+          schema:
+            type: boolean
+            default: true
+        - name: parent_item_id
+          in: query
+          required: false
+          description: この物品を親に持つ物品に絞り込む
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/InventoryTagIds'
+        - name: negate_tags
+          in: query
+          required: false
+          description: true なら tag_ids のどれも持たない物品を返す（INV-BR-23）
+          schema:
+            type: boolean
+            default: false
+        - name: fields
+          in: query
+          required: false
+          description: カスタムフィールドの「名前=値」。完全一致（大文字小文字を区別しない）で、複数指定は AND（INV-BR-21）
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              pattern: '^[^=]+=.*$'
+              maxLength: 1256
+          example: ['消費電力=1200W']
+        - name: warranty_status
+          in: query
+          required: false
+          description: 保証の状態で絞り込む（INV-BR-10）
+          schema:
+            $ref: '#/components/schemas/InventoryWarrantyStatus'
+        - name: warranty_expires_before
+          in: query
+          required: false
+          description: 保証期限がこの日以前の物品に絞り込む
+          schema:
+            type: string
+            format: date
+        - name: warranty_within_days
+          in: query
+          required: false
+          description: expiring_soon と判定する残り日数 N（INV-BR-10）
+          schema:
+            type: integer
+            minimum: 0
+            default: 30
+        - name: sold
+          in: query
+          required: false
+          description: true なら売却・処分済み（sold_date あり）だけ、false なら未売却だけを返す。省略時は両方（INV-BR-13）
+          schema:
+            type: boolean
+        - name: include_archived
+          in: query
+          required: false
+          description: true ならアーカイブ済みの物品も返す（INV-BR-14）
+          schema:
+            type: boolean
+            default: false
+        - name: sort
+          in: query
+          required: false
+          description: 並び順のキー
+          schema:
+            $ref: '#/components/schemas/InventoryItemSort'
+        - $ref: '#/components/parameters/InventorySortOrder'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 物品の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItemPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: inventoryCreateItem
+      tags: [inventory]
+      summary: 物品を登録する
+      description: |
+        物品を登録する。資産番号を指定しなければ、自動採番が有効なら既存の最大番号の次を振る（INV-BR-15）。
+        parent_item_id で親の物品を指定できる。親は物品に限り、循環は 409（INV-BR-06）。
+        子の物品の location_id は省略すると親の場所が入り、親と違う場所は 422（INV-BR-07）。親が無いときは location_id が必須（無ければ 422）。
+        lifetime_warranty と warranty_expires の両方指定、または保証期限が購入日より前なら 422（INV-BR-09）。
+        数量は 0 以上の整数、価格は 0 以上（INV-BR-11）。カスタムフィールド名の重複は 422（INV-BR-19）。
+      x-lifepipe-requirements: [INV-UC-07, INV-UC-13, INV-UC-16, INV-BR-06, INV-BR-07, INV-BR-09, INV-BR-11, INV-BR-15, INV-BR-19, INV-BR-20]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryItemCreate'
+      responses:
+        '201':
+          description: 登録した物品
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /inventory/items/{item_id}:
+    parameters:
+      - $ref: '#/components/parameters/InventoryItemId'
+    get:
+      operationId: inventoryGetItem
+      tags: [inventory]
+      summary: 物品の詳細を取得する
+      description: |
+        物品の詳細を返す。location_path、子の物品、添付ファイルの一覧を含める。
+      x-lifepipe-requirements: [INV-UC-11]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 物品の詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItemDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: inventoryUpdateItem
+      tags: [inventory]
+      summary: 物品を編集・移動する
+      description: |
+        送った項目だけを更新する。location_id の変更が移動で、子孫の物品の location_id も同じ場所に更新する（INV-BR-07）。
+        parent_item_id の循環は 409（INV-BR-06）。子の物品に親と違う場所を指定したら 422（INV-BR-07）。
+        売却・処分は sold_date などで記録する（INV-BR-13）。archived=true でアーカイブする（INV-BR-14）。
+        保証の組み合わせの検証は INV-BR-09、数値の範囲は INV-BR-11、カスタムフィールドは INV-BR-19。
+      x-lifepipe-requirements: [INV-UC-08, INV-UC-09, INV-UC-13, INV-UC-16, INV-UC-21, INV-BR-06, INV-BR-07, INV-BR-09, INV-BR-11, INV-BR-13, INV-BR-14, INV-BR-19, INV-BR-20]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryItemUpdate'
+      responses:
+        '200':
+          description: 更新後の物品
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: inventoryDeleteItem
+      tags: [inventory]
+      summary: 物品を削除する
+      description: |
+        物品と添付ファイルを削除する。子の物品は削除せず、parent_item_id を空にして同じ場所に残す（INV-BR-08）。
+      x-lifepipe-requirements: [INV-UC-10, INV-BR-08]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/items/{item_id}/duplicate:
+    parameters:
+      - $ref: '#/components/parameters/InventoryItemId'
+    post:
+      operationId: inventoryDuplicateItem
+      tags: [inventory]
+      summary: 物品を複製する
+      description: |
+        ID・資産番号・import_ref・source_ref・添付ファイルを除いた項目を写した物品を作る。資産番号は INV-BR-15 で新たに振る（INV-BR-30）。
+      x-lifepipe-requirements: [INV-UC-20, INV-BR-30, INV-BR-15]
+      x-lifepipe-priority: later
+      responses:
+        '201':
+          description: 複製した物品
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/tags:
+    get:
+      operationId: inventoryListTags
+      tags: [inventory]
+      summary: タグの一覧を取得する
+      description: |
+        タグを一覧で返す。各要素に item_count を含める。
+      x-lifepipe-requirements: [INV-UC-13]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/InventoryQ'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: タグの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryTagPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: inventoryCreateTag
+      tags: [inventory]
+      summary: タグを作成する
+      description: |
+        タグを作成する。名前の重複（大文字小文字を区別しない）は 409（INV-BR-18）。
+      x-lifepipe-requirements: [INV-UC-13, INV-BR-18]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryTagCreate'
+      responses:
+        '201':
+          description: 作成したタグ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryTag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /inventory/tags/{tag_id}:
+    parameters:
+      - $ref: '#/components/parameters/InventoryTagId'
+    get:
+      operationId: inventoryGetTag
+      tags: [inventory]
+      summary: タグを取得する
+      x-lifepipe-requirements: [INV-UC-13]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: タグ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryTag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: inventoryUpdateTag
+      tags: [inventory]
+      summary: タグを編集する
+      description: |
+        送った項目だけを更新する。名前の重複（大文字小文字を区別しない）は 409（INV-BR-18）。
+      x-lifepipe-requirements: [INV-UC-13, INV-BR-18]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryTagUpdate'
+      responses:
+        '200':
+          description: 更新後のタグ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryTag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: inventoryDeleteTag
+      tags: [inventory]
+      summary: タグを削除する
+      description: |
+        タグを削除し、物品・保管場所からの付与も外す。物品・保管場所は削除しない（INV-BR-18）。
+      x-lifepipe-requirements: [INV-UC-13, INV-BR-18]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/custom-fields:
+    get:
+      operationId: inventoryListCustomFieldNames
+      tags: [inventory]
+      summary: 使われているカスタムフィールド名の一覧を取得する
+      description: |
+        物品・保管場所で使われているカスタムフィールド名を重複なしで返す（入力補完用、INV-BR-21）。owner_type で対象を絞り込める。
+      x-lifepipe-requirements: [INV-UC-17, INV-BR-21]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: owner_type
+          in: query
+          required: false
+          description: 対象の種類。省略時は物品と保管場所の両方
+          schema:
+            $ref: '#/components/schemas/InventoryOwnerType'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: カスタムフィールド名の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryCustomFieldNamePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /inventory/custom-fields/{field_name}/values:
+    parameters:
+      - $ref: '#/components/parameters/InventoryCustomFieldName'
+    get:
+      operationId: inventoryListCustomFieldValues
+      tags: [inventory]
+      summary: カスタムフィールドの値の一覧を取得する
+      description: |
+        指定した名前のカスタムフィールドで使われている値を重複なしで返す（入力補完用、INV-BR-21）。
+      x-lifepipe-requirements: [INV-UC-17, INV-BR-21]
+      x-lifepipe-priority: mvp
+      parameters:
+        - name: owner_type
+          in: query
+          required: false
+          description: 対象の種類。省略時は物品と保管場所の両方
+          schema:
+            $ref: '#/components/schemas/InventoryOwnerType'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 値の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryCustomFieldValuePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /inventory/items/{item_id}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/InventoryItemId'
+    get:
+      operationId: inventoryListItemAttachments
+      tags: [inventory]
+      summary: 物品の添付ファイルの一覧を取得する
+      x-lifepipe-requirements: [INV-UC-14]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 添付ファイルの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAttachmentPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: inventoryCreateItemAttachment
+      tags: [inventory]
+      summary: 物品にファイルを添付する
+      description: |
+        ファイルを添付する。1 件あたり既定 10 MB まで（設定で変更可）で、超えたら 413（INV-BR-22）。
+        primary=true の写真を追加すると前の代表写真は外れる。代表が無いときは最初に追加した写真を代表とする。PNG・JPEG・AVIF・WEBP・GIF の写真にはサムネイルを作る（INV-BR-22）。
+      x-lifepipe-requirements: [INV-UC-14, INV-BR-22]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InventoryAttachmentUpload'
+      responses:
+        '201':
+          description: 追加した添付ファイル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAttachment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: ファイルが上限サイズ（既定 10 MB）を超えている（INV-BR-22）
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /inventory/items/{item_id}/attachments/{attachment_id}:
+    parameters:
+      - $ref: '#/components/parameters/InventoryItemId'
+      - $ref: '#/components/parameters/InventoryAttachmentId'
+    patch:
+      operationId: inventoryUpdateItemAttachment
+      tags: [inventory]
+      summary: 物品の添付ファイルのメタデータを更新する
+      description: |
+        表示名・用途・代表写真の指定を更新する。代表写真は 1 件までで、新しく指定すると前の代表は外れる。primary は kind が photo のときだけ指定できる（INV-BR-22）。
+      x-lifepipe-requirements: [INV-UC-14, INV-BR-22]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryAttachmentUpdate'
+      responses:
+        '200':
+          description: 更新後の添付ファイル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAttachment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: inventoryDeleteItemAttachment
+      tags: [inventory]
+      summary: 物品の添付ファイルを削除する
+      x-lifepipe-requirements: [INV-UC-14]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/locations/{location_id}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/InventoryLocationId'
+    get:
+      operationId: inventoryListLocationAttachments
+      tags: [inventory]
+      summary: 保管場所の添付ファイルの一覧を取得する
+      x-lifepipe-requirements: [INV-UC-14]
+      x-lifepipe-priority: mvp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 添付ファイルの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAttachmentPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: inventoryCreateLocationAttachment
+      tags: [inventory]
+      summary: 保管場所にファイルを添付する
+      description: |
+        ファイルを添付する。1 件あたり既定 10 MB まで（設定で変更可）で、超えたら 413（INV-BR-22）。
+        代表写真の扱いとサムネイル生成は物品の添付と同じ（INV-BR-22）。
+      x-lifepipe-requirements: [INV-UC-14, INV-BR-22]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InventoryAttachmentUpload'
+      responses:
+        '201':
+          description: 追加した添付ファイル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAttachment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: ファイルが上限サイズ（既定 10 MB）を超えている（INV-BR-22）
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /inventory/locations/{location_id}/attachments/{attachment_id}:
+    parameters:
+      - $ref: '#/components/parameters/InventoryLocationId'
+      - $ref: '#/components/parameters/InventoryAttachmentId'
+    patch:
+      operationId: inventoryUpdateLocationAttachment
+      tags: [inventory]
+      summary: 保管場所の添付ファイルのメタデータを更新する
+      description: |
+        表示名・用途・代表写真の指定を更新する。代表写真は 1 件までで、新しく指定すると前の代表は外れる（INV-BR-22）。
+      x-lifepipe-requirements: [INV-UC-14, INV-BR-22]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryAttachmentUpdate'
+      responses:
+        '200':
+          description: 更新後の添付ファイル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAttachment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: inventoryDeleteLocationAttachment
+      tags: [inventory]
+      summary: 保管場所の添付ファイルを削除する
+      x-lifepipe-requirements: [INV-UC-14]
+      x-lifepipe-priority: mvp
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/attachments/{attachment_id}/content:
+    parameters:
+      - $ref: '#/components/parameters/InventoryAttachmentId'
+    get:
+      operationId: inventoryGetAttachmentContent
+      tags: [inventory]
+      summary: 添付ファイルの本体を取得する
+      description: |
+        添付ファイルの本体を返す。Content-Type は添付時の content_type。
+      x-lifepipe-requirements: [INV-UC-14]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: ファイルの本体
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/attachments/{attachment_id}/thumbnail:
+    parameters:
+      - $ref: '#/components/parameters/InventoryAttachmentId'
+    get:
+      operationId: inventoryGetAttachmentThumbnail
+      tags: [inventory]
+      summary: 添付写真のサムネイルを取得する
+      description: |
+        写真のサムネイル画像を返す。サムネイルが無い（has_thumbnail が false）ときは 404（INV-BR-22）。
+      x-lifepipe-requirements: [INV-UC-14, INV-BR-22]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: サムネイル画像
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/assets/{asset_id}:
+    parameters:
+      - $ref: '#/components/parameters/InventoryAssetId'
+    get:
+      operationId: inventoryResolveAsset
+      tags: [inventory]
+      summary: 資産番号から物品または保管場所を引く
+      description: |
+        その時点でその資産番号を持つ物品または保管場所を返す。重複している場合は作成日時の古いものを返す（INV-BR-17）。
+        資産番号 URL（/a/<資産番号>）の解決に使う。
+      x-lifepipe-requirements: [INV-UC-12, INV-BR-17]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: 資産番号の解決結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAssetResolution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/assets/assign-unassigned:
+    post:
+      operationId: inventoryAssignUnassignedAssets
+      tags: [inventory]
+      summary: 未採番の物品にまとめて資産番号を振る
+      description: |
+        資産番号が 000-000（未採番）の物品に、作成日時の古い順に重複しない次の番号を振る。空欄（番号を持たない）の物品は対象外（INV-BR-16）。
+      x-lifepipe-requirements: [INV-UC-22, INV-BR-15, INV-BR-16]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 採番の結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAssetAssignmentResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /inventory/items/{item_id}/qrcode:
+    parameters:
+      - $ref: '#/components/parameters/InventoryItemId'
+    get:
+      operationId: inventoryGetItemQrcode
+      tags: [inventory]
+      summary: 物品の QR コード画像を取得する
+      description: |
+        物品の資産番号 URL（資産番号があるとき）または詳細画面 URL を符号化した PNG を返す。URL の基点はインスタンスの公開 URL（INV-BR-26）。
+      x-lifepipe-requirements: [INV-UC-15, INV-BR-26]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: QR コードの PNG 画像
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/locations/{location_id}/qrcode:
+    parameters:
+      - $ref: '#/components/parameters/InventoryLocationId'
+    get:
+      operationId: inventoryGetLocationQrcode
+      tags: [inventory]
+      summary: 保管場所の QR コード画像を取得する
+      description: |
+        保管場所の資産番号 URL（資産番号があるとき）または詳細画面 URL を符号化した PNG を返す（INV-BR-26）。
+      x-lifepipe-requirements: [INV-UC-15, INV-BR-26]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: QR コードの PNG 画像
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/assets/{asset_id}/qrcode:
+    parameters:
+      - $ref: '#/components/parameters/InventoryAssetId'
+    get:
+      operationId: inventoryGetAssetQrcode
+      tags: [inventory]
+      summary: 資産番号の QR コード画像を取得する
+      description: |
+        資産番号 URL（/a/<資産番号>）を符号化した PNG を返す。付け替えても同じ QR コードを使い続けられる（INV-BR-17, INV-BR-26）。
+      x-lifepipe-requirements: [INV-UC-15, INV-BR-17, INV-BR-26]
+      x-lifepipe-priority: mvp
+      responses:
+        '200':
+          description: QR コードの PNG 画像
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /inventory/purchase-ingestions:
+    post:
+      operationId: inventoryIngestPurchases
+      tags: [inventory]
+      summary: 購入した長期保有品を一括で登録する
+      description: |
+        ゲートウェイ（ingest_purchase）が振り分けた品目をまとめて受け取り、品目ごとに物品を登録する。
+        source_ref が同じ物品があれば何もせず skipped を返す（INV-BR-27）。保管場所の指定が無い品目は受け入れ用の場所（既定名「未整理」、無ければ作る）に置く（INV-BR-27）。
+        quantity = n、purchase_price = total_price ÷ n として登録する（INV-BR-27）。
+        品目は 1 件ずつ独立に処理し、検証に失敗した品目があっても他の品目は登録する。失敗した品目は errors に入れる（INV-BR-28）。
+      x-lifepipe-requirements: [INV-UC-18, INV-BR-27, INV-BR-28, INV-BR-15]
+      x-lifepipe-priority: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryPurchaseIngestionRequest'
+      responses:
+        '200':
+          description: 品目ごとの取り込み結果とエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryPurchaseIngestionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /inventory/imports/csv:
+    post:
+      operationId: inventoryImportCsv
+      tags: [inventory]
+      summary: CSV/TSV から物品・保管場所・タグを取り込む
+      description: |
+        区切り文字（カンマまたはタブ）で形式を判別する。import_ref が一致した物品は更新する。無い場所は経路の階層ごと、無いタグは作る。
+        日付は YYYY-MM-DD、真偽値は true/false・yes/no・1/0。添付ファイルと親子関係は取り込まない（INV-BR-24、INV-BR-04）。
+        作成・更新・スキップの件数と行ごとのエラーを返す。
+      x-lifepipe-requirements: [INV-UC-23, INV-BR-24, INV-BR-04, INV-BR-15]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InventoryCsvImportUpload'
+      responses:
+        '200':
+          description: 取り込みの結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryCsvImportResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: ファイルが上限サイズを超えている
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /inventory/exports/items.csv:
+    get:
+      operationId: inventoryExportItemsCsv
+      tags: [inventory]
+      summary: 物品を CSV でエクスポートする
+      description: |
+        物品ごとに 1 行で、インポートと同じ列を出す。場所は最上位からの経路（「 / 」区切り）で出す（INV-BR-25）。
+      x-lifepipe-requirements: [INV-UC-24, INV-BR-25]
+      x-lifepipe-priority: later
+      parameters:
+        - name: include_archived
+          in: query
+          required: false
+          description: true ならアーカイブ済みの物品も出力する（INV-BR-14）
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: CSV ファイル
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /inventory/items/{item_id}/maintenance:
+    parameters:
+      - $ref: '#/components/parameters/InventoryItemId'
+    get:
+      operationId: inventoryListItemMaintenance
+      tags: [inventory]
+      summary: 物品のメンテナンス記録の一覧を取得する
+      description: |
+        物品のメンテナンス予定・実施記録を返す。status は INV-BR-29 で計算する。
+      x-lifepipe-requirements: [INV-UC-25, INV-BR-29]
+      x-lifepipe-priority: later
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: 状態で絞り込む
+          schema:
+            $ref: '#/components/schemas/InventoryMaintenanceStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: メンテナンス記録の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryMaintenanceEntryPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: inventoryCreateMaintenanceEntry
+      tags: [inventory]
+      summary: メンテナンス予定・実施記録を登録する
+      description: |
+        メンテナンスの予定または実施記録を登録する。費用は 0 以上。
+      x-lifepipe-requirements: [INV-UC-25, INV-BR-29]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryMaintenanceEntryCreate'
+      responses:
+        '201':
+          description: 登録したメンテナンス記録
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryMaintenanceEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /inventory/items/{item_id}/maintenance/{entry_id}:
+    parameters:
+      - $ref: '#/components/parameters/InventoryItemId'
+      - $ref: '#/components/parameters/InventoryMaintenanceEntryId'
+    patch:
+      operationId: inventoryUpdateMaintenanceEntry
+      tags: [inventory]
+      summary: メンテナンス記録を更新する
+      description: |
+        送った項目だけを更新する。completed_date を入れると completed になる（INV-BR-29）。
+      x-lifepipe-requirements: [INV-UC-25, INV-BR-29]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryMaintenanceEntryUpdate'
+      responses:
+        '200':
+          description: 更新後のメンテナンス記録
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryMaintenanceEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: inventoryDeleteMaintenanceEntry
+      tags: [inventory]
+      summary: メンテナンス記録を削除する
+      x-lifepipe-requirements: [INV-UC-25]
+      x-lifepipe-priority: later
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/maintenance:
+    get:
+      operationId: inventoryListMaintenance
+      tags: [inventory]
+      summary: 全物品のメンテナンス予定を一覧する
+      description: |
+        全物品のメンテナンス記録を状態・予定日で絞り込んで返す。get_morning_briefing が当日予定・期限切れの作業を得るのに使う。
+        予定日当日の通知はゲートウェイの get_morning_briefing がこの一覧を読んで行う（INV-BR-29）。
+      x-lifepipe-requirements: [INV-UC-25, INV-BR-29]
+      x-lifepipe-priority: later
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: 状態で絞り込む（INV-BR-29）
+          schema:
+            $ref: '#/components/schemas/InventoryMaintenanceStatus'
+        - name: scheduled_before
+          in: query
+          required: false
+          description: 予定日がこの日以前のものに絞り込む
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: メンテナンス記録の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryMaintenanceEntryPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /inventory/item-templates:
+    get:
+      operationId: inventoryListItemTemplates
+      tags: [inventory]
+      summary: 物品テンプレートの一覧を取得する
+      x-lifepipe-requirements: [INV-UC-26]
+      x-lifepipe-priority: later
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 物品テンプレートの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItemTemplatePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: inventoryCreateItemTemplate
+      tags: [inventory]
+      summary: 物品テンプレートを作成する
+      x-lifepipe-requirements: [INV-UC-26]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryItemTemplateCreate'
+      responses:
+        '201':
+          description: 作成した物品テンプレート
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItemTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /inventory/item-templates/{template_id}:
+    parameters:
+      - $ref: '#/components/parameters/InventoryItemTemplateId'
+    get:
+      operationId: inventoryGetItemTemplate
+      tags: [inventory]
+      summary: 物品テンプレートを取得する
+      x-lifepipe-requirements: [INV-UC-26]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: 物品テンプレート
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItemTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: inventoryUpdateItemTemplate
+      tags: [inventory]
+      summary: 物品テンプレートを更新する
+      x-lifepipe-requirements: [INV-UC-26]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryItemTemplateUpdate'
+      responses:
+        '200':
+          description: 更新後の物品テンプレート
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItemTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: inventoryDeleteItemTemplate
+      tags: [inventory]
+      summary: 物品テンプレートを削除する
+      x-lifepipe-requirements: [INV-UC-26]
+      x-lifepipe-priority: later
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/label-templates:
+    get:
+      operationId: inventoryListLabelTemplates
+      tags: [inventory]
+      summary: ラベル印刷テンプレートの一覧を取得する
+      x-lifepipe-requirements: [INV-UC-27]
+      x-lifepipe-priority: later
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: ラベル印刷テンプレートの一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryLabelTemplatePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: inventoryCreateLabelTemplate
+      tags: [inventory]
+      summary: ラベル印刷テンプレートを作成する
+      description: |
+        is_default=true で作成すると、前の既定テンプレートは既定でなくなる。
+      x-lifepipe-requirements: [INV-UC-27, INV-BR-31]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryLabelTemplateCreate'
+      responses:
+        '201':
+          description: 作成したラベル印刷テンプレート
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryLabelTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /inventory/label-templates/{template_id}:
+    parameters:
+      - $ref: '#/components/parameters/InventoryLabelTemplateId'
+    get:
+      operationId: inventoryGetLabelTemplate
+      tags: [inventory]
+      summary: ラベル印刷テンプレートを取得する
+      x-lifepipe-requirements: [INV-UC-27]
+      x-lifepipe-priority: later
+      responses:
+        '200':
+          description: ラベル印刷テンプレート
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryLabelTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: inventoryUpdateLabelTemplate
+      tags: [inventory]
+      summary: ラベル印刷テンプレートを更新する
+      x-lifepipe-requirements: [INV-UC-27, INV-BR-31]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryLabelTemplateUpdate'
+      responses:
+        '200':
+          description: 更新後のラベル印刷テンプレート
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryLabelTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: inventoryDeleteLabelTemplate
+      tags: [inventory]
+      summary: ラベル印刷テンプレートを削除する
+      x-lifepipe-requirements: [INV-UC-27]
+      x-lifepipe-priority: later
+      responses:
+        '204':
+          description: 削除した
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/label-templates/{template_id}/render:
+    parameters:
+      - $ref: '#/components/parameters/InventoryLabelTemplateId'
+    post:
+      operationId: inventoryRenderLabels
+      tags: [inventory]
+      summary: 物品・保管場所のラベルを PNG/PDF で出力する
+      description: |
+        指定した物品・保管場所のラベルを、テンプレートに従って PNG または PDF で返す。
+        値の無い差し込み項目と未知の項目は空文字として印字する。EAN・UPC のバーコードは数字だけを符号化できる（INV-BR-31）。
+      x-lifepipe-requirements: [INV-UC-27, INV-BR-31]
+      x-lifepipe-priority: later
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryLabelRenderRequest'
+      responses:
+        '200':
+          description: 描画したラベル
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+components:
+  parameters:
+    InventoryLocationId:
+      name: location_id
+      in: path
+      required: true
+      description: 保管場所の ID
+      schema:
+        type: string
+        format: uuid
+    InventoryItemId:
+      name: item_id
+      in: path
+      required: true
+      description: 物品の ID
+      schema:
+        type: string
+        format: uuid
+    InventoryTagId:
+      name: tag_id
+      in: path
+      required: true
+      description: タグの ID
+      schema:
+        type: string
+        format: uuid
+    InventoryAttachmentId:
+      name: attachment_id
+      in: path
+      required: true
+      description: 添付ファイルの ID
+      schema:
+        type: string
+        format: uuid
+    InventoryAssetId:
+      name: asset_id
+      in: path
+      required: true
+      description: 資産番号（DDD-DDD 形式）
+      schema:
+        type: string
+        pattern: '^\d{3}-\d{3}$'
+        example: '000-001'
+    InventoryCustomFieldName:
+      name: field_name
+      in: path
+      required: true
+      description: カスタムフィールド名（大文字小文字を区別しない）
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+    InventoryMaintenanceEntryId:
+      name: entry_id
+      in: path
+      required: true
+      description: メンテナンス記録の ID
+      schema:
+        type: string
+        format: uuid
+    InventoryItemTemplateId:
+      name: template_id
+      in: path
+      required: true
+      description: 物品テンプレートの ID
+      schema:
+        type: string
+        format: uuid
+    InventoryLabelTemplateId:
+      name: template_id
+      in: path
+      required: true
+      description: ラベル印刷テンプレートの ID
+      schema:
+        type: string
+        format: uuid
+    InventoryQ:
+      name: q
+      in: query
+      required: false
+      description: キーワード。空白区切りの全語を含むものを返す。二重引用符で語句一致。先頭が「#」なら資産番号で検索する（INV-BR-23）
+      schema:
+        type: string
+        maxLength: 1000
+    InventoryTagIds:
+      name: tag_ids
+      in: query
+      required: false
+      description: タグで絞り込む。指定タグのいずれかを持つものを返す（INV-BR-23）
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          format: uuid
+    InventorySortOrder:
+      name: order
+      in: query
+      required: false
+      description: 並び順の向き
+      schema:
+        $ref: '#/components/schemas/InventorySortOrder'
+
+  schemas:
+    # ---- enums ----
+    InventoryWarrantyStatus:
+      type: string
+      description: 保証の状態（INV-BR-10）
+      enum: [none, active, expiring_soon, expired, lifetime]
+    InventoryOwnerType:
+      type: string
+      description: 添付・カスタムフィールドの対象の種類
+      enum: [item, location]
+    InventoryAttachmentKind:
+      type: string
+      description: 添付ファイルの用途。写真、取扱説明書、レシート、保証書、その他
+      enum: [photo, manual, receipt, warranty, other]
+    InventoryCustomFieldType:
+      type: string
+      description: カスタムフィールドの値の型。MVP は text のみ（INV-BR-20）
+      enum: [text]
+    InventoryMaintenanceStatus:
+      type: string
+      description: メンテナンスの状態（INV-BR-29）
+      enum: [scheduled, completed, overdue]
+    InventoryPurchaseIngestionResultKind:
+      type: string
+      description: 取り込みの結果。新規作成、既存の更新、重複のため何もしなかった
+      enum: [created, updated, skipped]
+    InventoryItemSort:
+      type: string
+      description: 物品一覧の並び順のキー
+      enum: [name, created_at, updated_at, purchase_date, warranty_expires]
+    InventorySortOrder:
+      type: string
+      description: 並び順の向き
+      enum: [asc, desc]
+      default: asc
+    InventoryLabelOrientation:
+      type: string
+      enum: [portrait, landscape]
+    InventoryLabelElementType:
+      type: string
+      enum: [text, barcode, rect, line, image]
+    InventoryBarcodeType:
+      type: string
+      description: バーコードの種類。ean13・ean8・upca は数字だけを符号化できる（INV-BR-31）
+      enum: [qr, datamatrix, code128, code39, ean13, ean8, upca]
+    InventoryLabelOutputFormat:
+      type: string
+      enum: [png, pdf]
+
+    # ---- value objects ----
+    InventoryLocationRef:
+      type: object
+      description: 経路の 1 段分（id と名前）
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    InventoryCustomField:
+      type: object
+      description: カスタムフィールド。同じ物品・場所の中で名前は重複させない（大文字小文字を区別しない）。値が空のフィールドは保存しない（INV-BR-19）
+      required: [name, type, value]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: 消費電力
+        type:
+          $ref: '#/components/schemas/InventoryCustomFieldType'
+        value:
+          type: string
+          maxLength: 1000
+          description: 値。https:// の URL や Markdown のリンク形式はクライアントがリンクとして表示できる（INV-BR-20）
+          example: 1200W
+    InventoryMoneyTotal:
+      type: object
+      description: 通貨ごとの評価額合計（INV-BR-12）
+      required: [currency, amount]
+      properties:
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: JPY
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+          example: '128000'
+
+    # ---- Location ----
+    InventoryLocation:
+      type: object
+      required: [id, name, tag_ids, custom_fields, path, item_count, total_value, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: 棚B
+        description:
+          type: string
+          nullable: true
+          description: 説明（Markdown）
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 親の保管場所。null なら最上位
+        kind:
+          type: string
+          nullable: true
+          description: 場所の種類の目安（自由入力）
+          example: shelf
+        notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: 備考（Markdown）
+        asset_id:
+          type: string
+          nullable: true
+          pattern: '^\d{3}-\d{3}$'
+          description: 資産番号。null なら番号なし
+        tag_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        custom_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryCustomField'
+        path:
+          type: array
+          readOnly: true
+          description: 最上位から自分までの祖先の並び（INV-BR-03）
+          items:
+            $ref: '#/components/schemas/InventoryLocationRef'
+        item_count:
+          type: integer
+          minimum: 0
+          readOnly: true
+          description: この場所に直接置かれた物品の数
+        total_value:
+          type: array
+          readOnly: true
+          description: 子孫の場所を含む、売却済みでない物品の評価額合計（通貨ごと、INV-BR-12）
+          items:
+            $ref: '#/components/schemas/InventoryMoneyTotal'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    InventoryLocationCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 親の保管場所。存在しなければ 422（INV-BR-01）
+        kind:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+        asset_id:
+          type: string
+          nullable: true
+          pattern: '^\d{3}-\d{3}$'
+        tag_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        custom_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryCustomField'
+    InventoryLocationUpdate:
+      type: object
+      description: 送った項目だけを更新する。parent_id の変更が移動（INV-BR-03）
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 新しい親。null で最上位へ移る。自分自身・子孫は 409（INV-BR-02）
+        kind:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+        asset_id:
+          type: string
+          nullable: true
+          pattern: '^\d{3}-\d{3}$'
+        tag_ids:
+          type: array
+          description: 付与するタグ全体で置き換える
+          items:
+            type: string
+            format: uuid
+        custom_fields:
+          type: array
+          description: カスタムフィールド全体で置き換える
+          items:
+            $ref: '#/components/schemas/InventoryCustomField'
+    InventoryLocationDetail:
+      allOf:
+        - $ref: '#/components/schemas/InventoryLocation'
+        - type: object
+          required: [children, items]
+          properties:
+            children:
+              type: array
+              description: 直下の子の場所
+              items:
+                $ref: '#/components/schemas/InventoryLocation'
+            items:
+              type: array
+              description: この場所に直接置かれた物品
+              items:
+                $ref: '#/components/schemas/InventoryItem'
+    InventoryLocationPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryLocation'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+    InventoryLocationTree:
+      type: object
+      required: [roots]
+      properties:
+        roots:
+          type: array
+          description: 根の保管場所（root_id 指定時はその 1 件）
+          items:
+            $ref: '#/components/schemas/InventoryLocationTreeNode'
+    InventoryLocationTreeNode:
+      type: object
+      required: [id, name, children]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kind:
+          type: string
+          nullable: true
+        asset_id:
+          type: string
+          nullable: true
+          pattern: '^\d{3}-\d{3}$'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryLocationTreeNode'
+        items:
+          type: array
+          description: with_items=true のときだけ返す。直接置かれた物品
+          items:
+            $ref: '#/components/schemas/InventoryTreeItem'
+    InventoryTreeItem:
+      type: object
+      required: [id, name, quantity]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        quantity:
+          type: integer
+          minimum: 0
+        parent_item_id:
+          type: string
+          format: uuid
+          nullable: true
+        asset_id:
+          type: string
+          nullable: true
+          pattern: '^\d{3}-\d{3}$'
+
+    # ---- Item ----
+    InventoryItem:
+      type: object
+      required: [id, name, location_id, quantity, lifetime_warranty, warranty_status, insured, archived, tag_ids, custom_fields, location_path, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: ミラーレスカメラ
+        description:
+          type: string
+          nullable: true
+          maxLength: 1000
+        location_id:
+          type: string
+          format: uuid
+        parent_item_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 親の物品（INV-BR-06）
+        quantity:
+          type: integer
+          minimum: 0
+          default: 1
+        asset_id:
+          type: string
+          nullable: true
+          pattern: '^\d{3}-\d{3}$'
+          description: 資産番号。null は番号なし、000-000 は未採番（INV-BR-16）
+          example: '000-042'
+        manufacturer:
+          type: string
+          nullable: true
+        model_number:
+          type: string
+          nullable: true
+        serial_number:
+          type: string
+          nullable: true
+        purchase_date:
+          type: string
+          format: date
+          nullable: true
+        purchase_from:
+          type: string
+          nullable: true
+        purchase_price:
+          type: string
+          nullable: true
+          pattern: '^\d+(\.\d{1,4})?$'
+          description: 1 個あたりの購入価格。0 以上（INV-BR-11）
+          example: '98000'
+        currency:
+          type: string
+          nullable: true
+          pattern: '^[A-Z]{3}$'
+          description: ISO 4217 の通貨コード。省略時はインスタンスの既定通貨
+          example: JPY
+        lifetime_warranty:
+          type: boolean
+          default: false
+        warranty_expires:
+          type: string
+          format: date
+          nullable: true
+          description: 保証期限（この日まで有効）
+        warranty_details:
+          type: string
+          nullable: true
+        warranty_status:
+          allOf:
+            - $ref: '#/components/schemas/InventoryWarrantyStatus'
+          readOnly: true
+        insured:
+          type: boolean
+          default: false
+        sold_date:
+          type: string
+          format: date
+          nullable: true
+          description: 売却・譲渡・廃棄した日。入っていれば売却・処分済み（INV-BR-13）
+        sold_to:
+          type: string
+          nullable: true
+        sold_price:
+          type: string
+          nullable: true
+          pattern: '^\d+(\.\d{1,4})?$'
+          description: 売却価格。0 以上（INV-BR-11）
+        sold_notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+        archived:
+          type: boolean
+          default: false
+        notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+        tag_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        custom_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryCustomField'
+        primary_photo_id:
+          type: string
+          format: uuid
+          nullable: true
+          readOnly: true
+          description: 代表写真の添付 ID（INV-BR-22）
+        import_ref:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: CSV インポートの重複判定キー（INV-BR-24）
+        source_ref:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: ingest_purchase の重複判定キー（INV-BR-27）
+        location_path:
+          type: array
+          readOnly: true
+          description: 置き場所の最上位からの経路
+          items:
+            $ref: '#/components/schemas/InventoryLocationRef'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    InventoryItemCreate:
+      type: object
+      description: |
+        location_id は parent_item_id を指定したときだけ省略でき、省略すると親の場所が入る（INV-BR-07）。
+        lifetime_warranty=true と warranty_expires は同時に指定できない（INV-BR-09）。
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+          maxLength: 1000
+        location_id:
+          type: string
+          format: uuid
+        parent_item_id:
+          type: string
+          format: uuid
+          nullable: true
+        quantity:
+          type: integer
+          minimum: 0
+          default: 1
+        asset_id:
+          type: string
+          nullable: true
+          pattern: '^\d{3}-\d{3}$'
+          description: 省略すると自動採番する（INV-BR-15）
+        manufacturer:
+          type: string
+          nullable: true
+        model_number:
+          type: string
+          nullable: true
+        serial_number:
+          type: string
+          nullable: true
+        purchase_date:
+          type: string
+          format: date
+          nullable: true
+        purchase_from:
+          type: string
+          nullable: true
+        purchase_price:
+          type: string
+          nullable: true
+          pattern: '^\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          nullable: true
+          pattern: '^[A-Z]{3}$'
+        lifetime_warranty:
+          type: boolean
+          default: false
+        warranty_expires:
+          type: string
+          format: date
+          nullable: true
+        warranty_details:
+          type: string
+          nullable: true
+        insured:
+          type: boolean
+          default: false
+        sold_date:
+          type: string
+          format: date
+          nullable: true
+        sold_to:
+          type: string
+          nullable: true
+        sold_price:
+          type: string
+          nullable: true
+          pattern: '^\d+(\.\d{1,4})?$'
+        sold_notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+        archived:
+          type: boolean
+          default: false
+        notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+        tag_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        custom_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryCustomField'
+        import_ref:
+          type: string
+          nullable: true
+          maxLength: 100
+        source_ref:
+          type: string
+          nullable: true
+          maxLength: 100
+    InventoryItemUpdate:
+      type: object
+      description: 送った項目だけを更新する。location_id の変更が移動で、子孫の物品も移る（INV-BR-07）
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+          maxLength: 1000
+        location_id:
+          type: string
+          format: uuid
+        parent_item_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: null で親子関係を外す
+        quantity:
+          type: integer
+          minimum: 0
+        asset_id:
+          type: string
+          nullable: true
+          pattern: '^\d{3}-\d{3}$'
+        manufacturer:
+          type: string
+          nullable: true
+        model_number:
+          type: string
+          nullable: true
+        serial_number:
+          type: string
+          nullable: true
+        purchase_date:
+          type: string
+          format: date
+          nullable: true
+        purchase_from:
+          type: string
+          nullable: true
+        purchase_price:
+          type: string
+          nullable: true
+          pattern: '^\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          nullable: true
+          pattern: '^[A-Z]{3}$'
+        lifetime_warranty:
+          type: boolean
+        warranty_expires:
+          type: string
+          format: date
+          nullable: true
+        warranty_details:
+          type: string
+          nullable: true
+        insured:
+          type: boolean
+        sold_date:
+          type: string
+          format: date
+          nullable: true
+        sold_to:
+          type: string
+          nullable: true
+        sold_price:
+          type: string
+          nullable: true
+          pattern: '^\d+(\.\d{1,4})?$'
+        sold_notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+        archived:
+          type: boolean
+        notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+        tag_ids:
+          type: array
+          description: 付与するタグ全体で置き換える
+          items:
+            type: string
+            format: uuid
+        custom_fields:
+          type: array
+          description: カスタムフィールド全体で置き換える
+          items:
+            $ref: '#/components/schemas/InventoryCustomField'
+        import_ref:
+          type: string
+          nullable: true
+          maxLength: 100
+        source_ref:
+          type: string
+          nullable: true
+          maxLength: 100
+    InventoryItemDetail:
+      allOf:
+        - $ref: '#/components/schemas/InventoryItem'
+        - type: object
+          required: [children, attachments]
+          properties:
+            children:
+              type: array
+              description: 子の物品
+              items:
+                $ref: '#/components/schemas/InventoryItem'
+            attachments:
+              type: array
+              description: 添付ファイルの一覧
+              items:
+                $ref: '#/components/schemas/InventoryAttachment'
+    InventoryItemPage:
+      type: object
+      required: [items, total, page, page_size, total_value]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryItem'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_value:
+          type: array
+          description: 検索結果全体のうち売却済みでない物品の評価額合計（通貨ごと、INV-BR-12）
+          items:
+            $ref: '#/components/schemas/InventoryMoneyTotal'
+
+    # ---- Tag ----
+    InventoryTag:
+      type: object
+      required: [id, name, item_count, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: 家電
+        description:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: '#3366CC'
+        item_count:
+          type: integer
+          minimum: 0
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    InventoryTagCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+    InventoryTagUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+    InventoryTagPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryTag'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- Custom fields ----
+    InventoryCustomFieldNamePage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            type: string
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+    InventoryCustomFieldValuePage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            type: string
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- Attachment ----
+    InventoryAttachment:
+      type: object
+      required: [id, owner_type, owner_id, kind, title, file_name, content_type, size_bytes, primary, has_thumbnail, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        owner_type:
+          $ref: '#/components/schemas/InventoryOwnerType'
+        owner_id:
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/InventoryAttachmentKind'
+        title:
+          type: string
+          description: 表示名。省略時はファイル名
+        file_name:
+          type: string
+        content_type:
+          type: string
+          example: image/jpeg
+        size_bytes:
+          type: integer
+          minimum: 0
+          readOnly: true
+        primary:
+          type: boolean
+          description: 代表写真か（kind が photo のときのみ、INV-BR-22）
+        has_thumbnail:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    InventoryAttachmentUpload:
+      type: object
+      description: 添付するファイル。1 件あたり既定 10 MB まで（INV-BR-22）
+      required: [file, kind]
+      properties:
+        file:
+          type: string
+          format: binary
+        kind:
+          $ref: '#/components/schemas/InventoryAttachmentKind'
+        title:
+          type: string
+          description: 省略時はファイル名
+        primary:
+          type: boolean
+          default: false
+          description: 代表写真にするか（kind が photo のときのみ）
+    InventoryAttachmentUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        kind:
+          $ref: '#/components/schemas/InventoryAttachmentKind'
+        primary:
+          type: boolean
+          description: true で代表写真にし、前の代表を外す（kind が photo のときのみ、INV-BR-22）
+    InventoryAttachmentPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryAttachment'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- Assets ----
+    InventoryAssetResolution:
+      type: object
+      description: 資産番号の解決結果。owner_type に応じて item か location の一方が入る（INV-BR-17）
+      required: [asset_id, owner_type]
+      properties:
+        asset_id:
+          type: string
+          pattern: '^\d{3}-\d{3}$'
+        owner_type:
+          $ref: '#/components/schemas/InventoryOwnerType'
+        item:
+          $ref: '#/components/schemas/InventoryItem'
+        location:
+          $ref: '#/components/schemas/InventoryLocation'
+    InventoryAssetAssignmentResult:
+      type: object
+      required: [assigned_count, assignments]
+      properties:
+        assigned_count:
+          type: integer
+          minimum: 0
+        assignments:
+          type: array
+          items:
+            type: object
+            required: [item_id, asset_id]
+            properties:
+              item_id:
+                type: string
+                format: uuid
+              asset_id:
+                type: string
+                pattern: '^\d{3}-\d{3}$'
+
+    # ---- Purchase ingestion ----
+    InventoryPurchaseIngestionLine:
+      type: object
+      description: ゲートウェイが長期保有品と判定した 1 品目
+      required: [source_ref, name]
+      properties:
+        source_ref:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 取り込み元の識別子（レシート ID と行番号など）。重複判定に使う（INV-BR-27）
+          example: receipt-0001#3
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        purchase_date:
+          type: string
+          format: date
+          nullable: true
+        purchase_from:
+          type: string
+          nullable: true
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+        total_price:
+          type: string
+          nullable: true
+          pattern: '^\d+(\.\d{1,4})?$'
+          description: 行の合計金額。purchase_price = total_price ÷ quantity として登録する（INV-BR-27）
+          example: '19800'
+        currency:
+          type: string
+          nullable: true
+          pattern: '^[A-Z]{3}$'
+        warranty_expires:
+          type: string
+          format: date
+          nullable: true
+        serial_number:
+          type: string
+          nullable: true
+        tag_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        location_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 省略すると受け入れ用の場所（既定名「未整理」）に置く（INV-BR-27）
+    InventoryPurchaseIngestionRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/InventoryPurchaseIngestionLine'
+    InventoryPurchaseIngestion:
+      type: object
+      description: 1 品目の取り込み結果
+      required: [source_ref, result, item_id]
+      properties:
+        source_ref:
+          type: string
+        result:
+          $ref: '#/components/schemas/InventoryPurchaseIngestionResultKind'
+        item_id:
+          type: string
+          format: uuid
+    InventoryPurchaseIngestionError:
+      type: object
+      description: 検証に失敗した品目（INV-BR-28）
+      required: [index, message]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: 要求の items での位置（0 始まり）
+        source_ref:
+          type: string
+          nullable: true
+        field:
+          type: string
+          nullable: true
+          description: 問題のあった項目名
+        message:
+          type: string
+    InventoryPurchaseIngestionResponse:
+      type: object
+      required: [results, errors]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryPurchaseIngestion'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryPurchaseIngestionError'
+
+    # ---- CSV import ----
+    InventoryCsvImportUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: CSV または TSV。区切り文字で判別し、拡張子は問わない（INV-BR-24）
+    InventoryCsvImportResult:
+      type: object
+      required: [created, updated, skipped, errors]
+      properties:
+        created:
+          type: integer
+          minimum: 0
+        updated:
+          type: integer
+          minimum: 0
+        skipped:
+          type: integer
+          minimum: 0
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryCsvImportRowError'
+    InventoryCsvImportRowError:
+      type: object
+      required: [row, message]
+      properties:
+        row:
+          type: integer
+          minimum: 1
+          description: 行番号（ヘッダー行を 1 とする）
+        column:
+          type: string
+          nullable: true
+        message:
+          type: string
+
+    # ---- Maintenance ----
+    InventoryMaintenanceEntry:
+      type: object
+      required: [id, item_id, name, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        item_id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          example: フィルター交換
+        description:
+          type: string
+          nullable: true
+        scheduled_date:
+          type: string
+          format: date
+          nullable: true
+        completed_date:
+          type: string
+          format: date
+          nullable: true
+        cost:
+          type: string
+          nullable: true
+          pattern: '^\d+(\.\d{1,4})?$'
+          description: 費用。0 以上
+        currency:
+          type: string
+          nullable: true
+          pattern: '^[A-Z]{3}$'
+          description: 費用の通貨。省略時はインスタンスの既定通貨
+        status:
+          allOf:
+            - $ref: '#/components/schemas/InventoryMaintenanceStatus'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    InventoryMaintenanceEntryCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          nullable: true
+        scheduled_date:
+          type: string
+          format: date
+          nullable: true
+        completed_date:
+          type: string
+          format: date
+          nullable: true
+        cost:
+          type: string
+          nullable: true
+          pattern: '^\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          nullable: true
+          pattern: '^[A-Z]{3}$'
+    InventoryMaintenanceEntryUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          nullable: true
+        scheduled_date:
+          type: string
+          format: date
+          nullable: true
+        completed_date:
+          type: string
+          format: date
+          nullable: true
+        cost:
+          type: string
+          nullable: true
+          pattern: '^\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          nullable: true
+          pattern: '^[A-Z]{3}$'
+    InventoryMaintenanceEntryPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryMaintenanceEntry'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- Item template ----
+    InventoryItemTemplateDefaults:
+      type: object
+      description: 物品作成時に入れる既定値（Item の入力項目の部分集合）
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 1000
+        quantity:
+          type: integer
+          minimum: 0
+        manufacturer:
+          type: string
+        model_number:
+          type: string
+        location_id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        lifetime_warranty:
+          type: boolean
+        warranty_details:
+          type: string
+        insured:
+          type: boolean
+        notes:
+          type: string
+          maxLength: 1000
+        tag_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        custom_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryCustomField'
+    InventoryItemTemplate:
+      type: object
+      required: [id, name, defaults, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        defaults:
+          $ref: '#/components/schemas/InventoryItemTemplateDefaults'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    InventoryItemTemplateCreate:
+      type: object
+      required: [name, defaults]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        defaults:
+          $ref: '#/components/schemas/InventoryItemTemplateDefaults'
+    InventoryItemTemplateUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        defaults:
+          $ref: '#/components/schemas/InventoryItemTemplateDefaults'
+    InventoryItemTemplatePage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryItemTemplate'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ---- Label template ----
+    InventoryLabelElement:
+      type: object
+      description: ラベル上の配置要素。位置・サイズは mm、回転は度
+      required: [type, x_mm, y_mm, width_mm, height_mm]
+      properties:
+        type:
+          $ref: '#/components/schemas/InventoryLabelElementType'
+        x_mm:
+          type: number
+        y_mm:
+          type: number
+        width_mm:
+          type: number
+          minimum: 0
+        height_mm:
+          type: number
+          minimum: 0
+        rotation_deg:
+          type: number
+          default: 0
+        text:
+          type: string
+          nullable: true
+          description: type が text のときの文字列。差し込み項目を含められる（INV-BR-31）
+        barcode_type:
+          allOf:
+            - $ref: '#/components/schemas/InventoryBarcodeType'
+          type: string
+          nullable: true
+          description: type が barcode のときのバーコードの種類
+        barcode_data:
+          type: string
+          nullable: true
+          description: type が barcode のときに符号化する元データ。差し込み項目を含められる
+        image_attachment_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: type が image のときの画像
+    InventoryLabelSheetLayout:
+      type: object
+      description: 台紙印刷時の配置
+      properties:
+        paper_size:
+          type: string
+          example: A4
+        rows:
+          type: integer
+          minimum: 1
+        columns:
+          type: integer
+          minimum: 1
+        margin_top_mm:
+          type: number
+          minimum: 0
+        margin_left_mm:
+          type: number
+          minimum: 0
+        gap_x_mm:
+          type: number
+          minimum: 0
+        gap_y_mm:
+          type: number
+          minimum: 0
+        offset_x_mm:
+          type: number
+          description: 印刷位置の横方向の補正量
+        offset_y_mm:
+          type: number
+          description: 印刷位置の縦方向の補正量
+    InventoryLabelTemplate:
+      type: object
+      required: [id, name, width_mm, height_mm, dpi, orientation, elements, is_default, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        width_mm:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+        height_mm:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+        dpi:
+          type: integer
+          minimum: 1
+          default: 300
+        orientation:
+          $ref: '#/components/schemas/InventoryLabelOrientation'
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryLabelElement'
+        sheet_layout:
+          allOf:
+            - $ref: '#/components/schemas/InventoryLabelSheetLayout'
+          type: object
+          nullable: true
+        is_default:
+          type: boolean
+          default: false
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    InventoryLabelTemplateCreate:
+      type: object
+      required: [name, width_mm, height_mm, orientation, elements]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        width_mm:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+        height_mm:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+        dpi:
+          type: integer
+          minimum: 1
+          default: 300
+        orientation:
+          $ref: '#/components/schemas/InventoryLabelOrientation'
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryLabelElement'
+        sheet_layout:
+          allOf:
+            - $ref: '#/components/schemas/InventoryLabelSheetLayout'
+          type: object
+          nullable: true
+        is_default:
+          type: boolean
+          default: false
+    InventoryLabelTemplateUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        width_mm:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+        height_mm:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+        dpi:
+          type: integer
+          minimum: 1
+        orientation:
+          $ref: '#/components/schemas/InventoryLabelOrientation'
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryLabelElement'
+        sheet_layout:
+          allOf:
+            - $ref: '#/components/schemas/InventoryLabelSheetLayout'
+          type: object
+          nullable: true
+        is_default:
+          type: boolean
+    InventoryLabelTemplatePage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryLabelTemplate'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+    InventoryLabelTarget:
+      type: object
+      required: [owner_type, id]
+      properties:
+        owner_type:
+          $ref: '#/components/schemas/InventoryOwnerType'
+        id:
+          type: string
+          format: uuid
+    InventoryLabelRenderRequest:
+      type: object
+      required: [targets, format]
+      properties:
+        targets:
+          type: array
+          minItems: 1
+          description: ラベルを出力する物品・保管場所
+          items:
+            $ref: '#/components/schemas/InventoryLabelTarget'
+        copies:
+          type: integer
+          minimum: 1
+          default: 1
+          description: 対象ごとの部数
+        format:
+          $ref: '#/components/schemas/InventoryLabelOutputFormat'
